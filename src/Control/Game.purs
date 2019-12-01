@@ -37,7 +37,7 @@ type Game state return =
   , events     :: List (GameEvent state)
   }
 
--- | Make an `Aff` that will start your gameloop when run
+-- | Make an `Aff` that will start your game loop when run
 game :: forall s a. Game s a -> Aff a
 game { init, update, display, end, events, gameWindow } = makeAff \cb -> do
   -- Mutable values
