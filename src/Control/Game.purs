@@ -2,6 +2,7 @@ module Control.Game (GameEvent, Game, game) where
 
 import Prelude
 
+import Control.Monad.Error.Class (throwError)
 import Data.DateTime.Instant (unInstant)
 import Data.Either (Either)
 import Data.Foldable (for_)
@@ -10,13 +11,22 @@ import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..), Seconds(..))
 import Data.Traversable (for)
 import Effect (Effect)
-import Effect.Aff (Aff, Error, effectCanceler, makeAff)
+import Effect.Class (liftEffect)
+import Effect.Aff (Aff, effectCanceler, makeAff)
+import Effect.Exception (Error, error)
 import Effect.Now (now)
 import Effect.Ref (new, read, write) as R
+import Graphics.Canvas as C
+import Graphics.CanvasAction (CanvasAction, runAction)
+import Unsafe.Coerce (unsafeCoerce)
+import Web.DOM.ParentNode (QuerySelector, querySelector)
 import Web.Event.Event (Event, EventType)
 import Web.Event.EventTarget (addEventListener, eventListener, removeEventListener)
 import Web.Event.Internal.Types (EventTarget)
-import Web.HTML.Window (Window, cancelAnimationFrame, requestAnimationFrame)
+import Web.HTML (window)
+import Web.HTML.HTMLCanvasElement (fromElement, HTMLCanvasElement)
+import Web.HTML.HTMLDocument (toParentNode)
+import Web.HTML.Window (cancelAnimationFrame, requestAnimationFrame, document)
 
 
 -- | The type of events that can be used in `Game`
@@ -27,26 +37,28 @@ type GameEvent state =
   , useCapture :: Boolean
   }
 
--- | The type of a game that can be run with `game`
+-- | A record type containing the information needed to run a game loop with
+-- | `game`
 type Game state return =
-  { gameWindow :: Window
-  , init       :: Effect state
-  , update     :: Seconds -> state -> Effect state
-  , display    :: state -> Effect Unit
-  , end        :: state -> Maybe (Either Error return)
-  , events     :: List (GameEvent state)
+  { init    :: Effect state
+  , update  :: Seconds -> state -> Effect state
+  , display :: state -> Effect Unit
+  , end     :: state -> Effect (Maybe (Either Error return))
+  , events  :: List (GameEvent state)
   }
 
 -- | Make an `Aff` that will start your game loop when run
 game :: forall s a. Game s a -> Aff a
-game { init, update, display, end, events, gameWindow } = makeAff \cb -> do
+game { init, update, display, end, events } = makeAff \cb -> do
+  gameWindow <- window
   -- Mutable values
   state <- init >>= R.new
   rafID <- R.new Nothing
   -- Setup events
-  let getListener { update: evtUpdate } = eventListener \event -> do
-        newState <- R.read state >>= (\old -> evtUpdate event old)
-        R.write newState state
+  let getListener { update: evtUpdate } = eventListener
+        \event -> R.read state
+              >>= evtUpdate event
+              >>= flip R.write state
   manageEvents <- for events \event@{ eventType, target, useCapture } ->
     getListener event >>= \listener -> pure
       { add:       addEventListener eventType listener useCapture target
@@ -57,7 +69,7 @@ game { init, update, display, end, events, gameWindow } = makeAff \cb -> do
   -- Define canceler as effect
     cancel = do
       id <- R.read rafID
-      for_ id (\id' -> cancelAnimationFrame id' gameWindow)
+      for_ id (_ `cancelAnimationFrame` gameWindow)
       for_ manageEvents _.remove
   -- Setup for requestAnimationFrame
     tick t0 = do
@@ -69,10 +81,8 @@ game { init, update, display, end, events, gameWindow } = makeAff \cb -> do
       R.write newState state
       display newState
       -- Loop
-      case end newState of
-        Just ea -> do
-          cancel
-          cb ea
+      end newState >>= case _ of
+        Just ea -> cancel *> cb ea
         Nothing -> do
           id <- requestAnimationFrame (tick t) gameWindow
           R.write (Just id) rafID
@@ -82,3 +92,39 @@ game { init, update, display, end, events, gameWindow } = makeAff \cb -> do
   R.write (Just id0) rafID
   -- Canceler
   pure (effectCanceler cancel)
+
+-- | A record type containing the information needed to run a game loop with
+-- | `canvasGame`
+type CanvasGame state return =
+  { canvas      :: QuerySelector
+  , setupCanvas :: CanvasAction
+  , init        :: Effect state
+  , update      :: Seconds -> state -> Effect state
+  , display     :: state -> CanvasAction
+  , end         :: state -> Effect (Maybe (Either Error return))
+  , events      :: List (GameEvent state)
+  }
+
+-- | Make an `Aff` that will start your canvas game loop when run
+canvasGame :: forall s a. CanvasGame s a -> Aff a
+canvasGame g = do
+  ctx <- liftEffect getCtx >>= case _ of
+    Nothing -> throwError (error "The canvas for canvasGame was not found.")
+    Just ctx -> pure ctx
+  liftEffect do runAction ctx g.setupCanvas
+  game
+    { init:    g.init
+    , update:  g.update
+    , display: \s -> runAction ctx (g.display s)
+    , end:     g.end
+    , events:  g.events
+    }
+    where
+      toCanvasElement :: HTMLCanvasElement -> C.CanvasElement
+      toCanvasElement = unsafeCoerce
+      getCtx = do
+        doc <- window >>= document <#> toParentNode
+        mCanv <- querySelector g.canvas doc
+          <#> (=<<) fromElement
+          <#> map toCanvasElement
+        for mCanv C.getContext2D

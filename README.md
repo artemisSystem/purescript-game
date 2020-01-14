@@ -12,12 +12,11 @@ It looks like this:
 
 ```purescript
 type Game state return =
-  { gameWindow :: Window
-  , init       :: Effect state
-  , update     :: Seconds -> state -> Effect state
-  , display    :: state -> Effect Unit
-  , end        :: state -> Maybe (Either Error return)
-  , events     :: List (GameEvent state)
+  { init    :: Effect state
+  , update  :: Seconds -> state -> Effect state
+  , display :: state -> Effect Unit
+  , end     :: state -> Effect (Maybe (Either Error return))
+  , events  :: List (GameEvent state)
   }
 ```
 
@@ -26,9 +25,6 @@ record type containing all the different values your game needs.
 
 `return` is the type of the value that will be returned by the `Aff` your game
 is run in, if and when it terminates.
-
-`gameWindow :: Window` is the browser window your game runs in. To get the
-current window your code is running in, use `window` from [`Web.HTML`](https://pursuit.purescript.org/packages/purescript-web-html/2.3.0/docs/Web.HTML#v:window).
 
 `init :: Effect state` is the initial state of your game. It is wrapped in
 `Effect` so that it is possible for the initial state to depend on random
@@ -47,12 +43,12 @@ should display the game in some way. This is usually drawing on a HTML5 canvas,
 manipulating the DOM, or logging to the console. This function is run right
 after `update`.
 
-`end :: state -> Maybe (Either Error return)` is the function that is used to
-determine whether to terminate the game loop. It is run after every frame. Given
-the current state, if it returns `Nothing`, the game loop will keep running for
-another frame. If it returns a `Just`, the game loop will end. If the inner
-value is an `Error`, the `Aff` will error, and if the inner value is of type
-`return`, it will resolve the `Aff` with that value.
+`end :: state -> Effect (Maybe (Either Error return))` is the function that is
+used to determine whether to terminate the game loop. It is run after every
+frame. Given the current state, if it returns `Nothing`, the game loop will keep
+running for another frame. If it returns a `Just`, the game loop will end. If
+the inner value is an `Error`, the `Aff` will error, and if the inner value is
+of type `return`, it will resolve the `Aff` with that value.
 
 `events :: List (GameEvent state)` is a list of events watched by the game.
 The type alias `GameEvent` is used to represent these events. It looks like

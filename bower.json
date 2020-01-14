@@ -2,8 +2,8 @@
   "name": "purescript-game",
   "license": "MIT",
   "repository": {
-      "type": "git",
-      "url": "https://github.com/3ddyy/purescript-game.git"
+    "type": "git",
+    "url": "https://github.com/3ddyy/purescript-game.git"
   },
   "ignore": [
     "**/.*",
@@ -13,15 +13,18 @@
   ],
   "dependencies": {
     "purescript-prelude": "^4.1.1",
-    "purescript-console": "^4.2.0",
     "purescript-effect": "^2.0.1",
     "purescript-aff": "^5.1.2",
     "purescript-datetime": "^4.1.1",
     "purescript-now": "^4.0.0",
     "purescript-refs": "^4.1.0",
-    "purescript-web-html": "^2.3.0"
+    "purescript-web-html": "^2.3.0",
+    "purescript-canvas-action": "^1.0.2",
+    "purescript-foldable-traversable": "^4.1.1",
+    "purescript-polymorphic-vectors": "^1.1.1"
   },
   "devDependencies": {
+    "purescript-console": "^4.2.0",
     "purescript-psci-support": "^4.0.0"
   }
 }
