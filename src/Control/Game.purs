@@ -120,7 +120,7 @@ canvasGame g@{ init, update, events } = do
     { init
     , update
     , display: g.display >>> runAction ctx
-    , end:     g.end >>> runAction ctx
+    , end: g.end >>> runAction ctx
     , events
     }
     where
