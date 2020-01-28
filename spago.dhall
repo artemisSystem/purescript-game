@@ -10,11 +10,15 @@ You can edit this file as you like.
     , "datetime"
     , "effect"
     , "foldable-traversable"
+    , "identity"
+    , "newtype"
     , "now"
+    , "partial"
     , "polymorphic-vectors"
     , "prelude"
     , "psci-support"
     , "refs"
+    , "undefined"
     , "web-html"
     ]
 , packages = ./packages.dhall

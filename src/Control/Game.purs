@@ -1,4 +1,8 @@
-module Control.Game (GameEvent, Game, game) where
+module Control.Game
+  (GameEvent
+  , Game, game
+  , CanvasGame, canvasGame
+  ) where
 
 import Prelude
 
@@ -17,7 +21,7 @@ import Effect.Exception (Error, error)
 import Effect.Now (now)
 import Effect.Ref (new, read, write) as R
 import Graphics.Canvas as C
-import Graphics.CanvasAction (CanvasAction, runAction)
+import Graphics.CanvasAction (CanvasAction, CanvasActionM, runAction)
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.ParentNode (QuerySelector, querySelector)
 import Web.Event.Event (Event, EventType)
@@ -101,23 +105,23 @@ type CanvasGame state return =
   , init        :: Effect state
   , update      :: Seconds -> state -> Effect state
   , display     :: state -> CanvasAction
-  , end         :: state -> Effect (Maybe (Either Error return))
+  , end         :: state -> CanvasActionM (Maybe (Either Error return))
   , events      :: List (GameEvent state)
   }
 
 -- | Make an `Aff` that will start your canvas game loop when run
 canvasGame :: forall s a. CanvasGame s a -> Aff a
-canvasGame g = do
+canvasGame g@{ init, update, events } = do
   ctx <- liftEffect getCtx >>= case _ of
     Nothing -> throwError (error "The canvas for canvasGame was not found.")
     Just ctx -> pure ctx
   liftEffect do runAction ctx g.setupCanvas
   game
-    { init:    g.init
-    , update:  g.update
-    , display: \s -> runAction ctx (g.display s)
-    , end:     g.end
-    , events:  g.events
+    { init
+    , update
+    , display: g.display >>> runAction ctx
+    , end:     g.end >>> runAction ctx
+    , events
     }
     where
       toCanvasElement :: HTMLCanvasElement -> C.CanvasElement
