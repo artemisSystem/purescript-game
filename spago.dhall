@@ -17,6 +17,7 @@ You can edit this file as you like.
     , "polymorphic-vectors"
     , "prelude"
     , "psci-support"
+    , "record"
     , "refs"
     , "undefined"
     , "web-html"

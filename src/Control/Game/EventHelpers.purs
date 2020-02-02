@@ -3,6 +3,7 @@ module Control.Game.EventHelpers where
 import Prelude
 
 import Control.Game (GameEvent)
+import Control.Game.Util (qSel)
 import Control.Monad.Error.Class (throwError)
 import Data.List (List, fromFoldable, (:))
 import Data.List.Partial (head)
@@ -14,14 +15,11 @@ import Effect (Effect)
 import Effect.Exception (error)
 import Partial.Unsafe (unsafePartial)
 import Undefined (undefined)
-import Web.DOM.Element (toEventTarget, Element)
-import Web.DOM.ParentNode (QuerySelector, querySelector)
+import Web.DOM.Element (toEventTarget)
+import Web.DOM.ParentNode (QuerySelector)
 import Web.Event.Event (Event, EventType(..))
-import Web.HTML (window)
-import Web.HTML.HTMLDocument (toParentNode)
 import Web.HTML.HTMLInputElement (HTMLInputElement)
 import Web.HTML.HTMLInputElement (fromElement, toEventTarget, value, valueAsNumber) as Input
-import Web.HTML.Window (document)
 
 -- TODO:
 -- Note: `Kleisli m a` is being used to denote a function of type (a -> m a),
@@ -34,30 +32,23 @@ import Web.HTML.Window (document)
 -- mouse movements: (position within some element -> Kleisli effect)
 -- keyboard inputs: Foldable (Key -> Kleisli Effect state)
 -- keyboard inputs: (event -> Kleisli effect)
+-- document onload
 
--- | `querySelector` without having to supply a `ParentNode`, using the
--- | document as parent node.
-qSel :: QuerySelector -> Effect (Maybe Element)
-qSel sel = do
-  doc <- window >>= document <#> toParentNode
-  querySelector sel doc
-
--- | Create a `GameEvent` that fires when the specified button is clicked
-buttonEvent
+-- | Create a `GameEvent` that fires when the specified element is clicked
+clickEvent
   :: forall state
    . QuerySelector
   -> (Event -> state -> Effect state)
   -> Effect (GameEvent state)
-buttonEvent button update = do
-  target <- qSel button <#> map toEventTarget >>= case _ of
-    Just elem -> pure elem
-    Nothing -> throwError (error "Button for buttonEvent not found")
-  pure
-    { eventType: EventType "click"
-    , target
-    , update
-    , useCapture: false
-    }
+clickEvent elem update = ado
+  target <- qSel elem <#> map toEventTarget >>= case _ of
+    Just target -> pure target
+    Nothing -> throwError (error "Element for clickEvent not found")
+  in { eventType: EventType "click"
+     , target
+     , update
+     , useCapture: false
+     }
 
 inputChangeEvent
   :: forall t a state
@@ -121,6 +112,7 @@ inputChangeEventNumberOne
   -> Effect (GameEvent state)
 inputChangeEventNumberOne = inputChangeEventOne Input.valueAsNumber
 
+-- TODO: docs about how this doesnt run the update function of the original event
 inputEvent
   :: forall t a state
    . Traversable t
@@ -135,9 +127,7 @@ inputEvent getValue baseEvent inputSelectors update = ado
     _ -> throwError (error "Traversable for inputEvent was empty")
   in { eventType: baseEvent.eventType
      , target: baseEvent.target
-     , update: \evt state -> do
-        state' <- baseEvent.update evt state
-        update undefined state'
+     , update: \_ state -> update undefined state
      , useCapture: baseEvent.useCapture
      }
 
