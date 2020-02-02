@@ -5,7 +5,7 @@ module Control.Game
   , noUpdate
   , noEnd
   , noEvents
---, noSignal
+  , noSignal
   ) where
 
 import Prelude
@@ -27,6 +27,7 @@ import Effect.Now (now)
 import Effect.Ref (new, read, write) as R
 import Graphics.Canvas as C
 import Graphics.CanvasAction (CanvasAction, CanvasActionM, runAction)
+import Signal (Signal, constant, runSignal)
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.ParentNode (QuerySelector)
 import Web.Event.Event (Event, EventType)
@@ -53,14 +54,13 @@ type Game state return =
   , display :: state -> Effect Unit
   , end     :: state -> Effect (Maybe (Either Error return))
   , events  :: List (GameEvent state)
--- TODO:
---, signal  :: Signal (state -> Effect state)
+  , signal  :: Signal (state -> Effect state)
   }
 
 -- TODO: Rewrite to make use of Aff better?
 -- | Make an `Aff` that will start the provided game loop when run
 game :: forall s a. Game s a -> Aff a
-game { init, update, display, end, events } = makeAff \cb -> do
+game { init, update, display, end, events, signal } = makeAff \cb -> do
   gameWindow <- window
   -- Mutable values
   state <- init >>= R.new
@@ -76,13 +76,18 @@ game { init, update, display, end, events } = makeAff \cb -> do
       , remove: removeEventListener eventType listener useCapture target
       }
   for_ manageEvents _.add
+  -- Setup signal
+  runSignal $ signal <#> \sigUpdate
+     -> R.read state
+    >>= sigUpdate
+    >>= flip R.write state
   let
-  -- Define canceler as effect
+    -- Define canceler as effect
     cancel = do
       id <- R.read rafID
       for_ id (_ `cancelAnimationFrame` gameWindow)
       for_ manageEvents _.remove
-  -- Setup for requestAnimationFrame
+    -- Setup for requestAnimationFrame
     tick t0 = do
       -- Setup
       Milliseconds t <- unInstant <$> now
@@ -107,17 +112,18 @@ game { init, update, display, end, events } = makeAff \cb -> do
 -- | A record type containing the information needed to run a game loop with
 -- | `canvasGame`
 type CanvasGame state return =
-  { canvas      :: QuerySelector
-  , init        :: CanvasActionM state
-  , update      :: Seconds -> state -> Effect state
-  , display     :: state -> CanvasAction
-  , end         :: state -> CanvasActionM (Maybe (Either Error return))
-  , events      :: List (GameEvent state)
+  { canvas  :: QuerySelector
+  , init    :: CanvasActionM state
+  , update  :: Seconds -> state -> Effect state
+  , display :: state -> CanvasAction
+  , end     :: state -> CanvasActionM (Maybe (Either Error return))
+  , events  :: List (GameEvent state)
+  , signal  :: Signal (state -> Effect state)
   }
 
 -- | Make an `Aff` that will start the provided canvas game loop when run
 canvasGame :: forall s a. CanvasGame s a -> Aff a
-canvasGame g@{ init, update, events } = do
+canvasGame g@{ init, update, events, signal } = do
   ctx <- liftEffect getCtx >>= case _ of
     Nothing -> throwError (error "The canvas for canvasGame was not found.")
     Just ctx -> pure ctx
@@ -127,6 +133,7 @@ canvasGame g@{ init, update, events } = do
     , display: g.display >>> runAction ctx
     , end: g.end >>> runAction ctx
     , events
+    , signal
     }
     where
       toCanvasElement :: HTMLCanvasElement -> C.CanvasElement
@@ -163,4 +170,5 @@ noEvents = Nil
 
 -- | An empty signal. Set this as the `signal` field in a `Game` or `CanvasGame`
 -- | if you're not using signals.
--- noSignal = constant pure
+noSignal :: forall state. Signal (state -> Effect state)
+noSignal = constant pure

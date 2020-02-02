@@ -2,7 +2,7 @@ module Test.InputEvent.Main where
 
 import Prelude
 
-import Control.Game (canvasGame, noUpdate, noEnd)
+import Control.Game (canvasGame, noUpdate, noEnd, noSignal)
 import Control.Game.EventHelpers (clickEvent, inputEventValueOne)
 import Data.List (List(..), (:))
 import Data.Vector.Polymorphic ((><))
@@ -33,4 +33,5 @@ main = do
         fillText str (10.0 >< 40.0)
     , end: noEnd
     , events: event1 : event2 : Nil
+    , signal: noSignal
     }

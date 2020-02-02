@@ -2,7 +2,7 @@ module Test.InputChangeEvent.Main where
 
 import Prelude
 
-import Control.Game (canvasGame, noUpdate)
+import Control.Game (canvasGame, noUpdate, noSignal)
 import Control.Game.EventHelpers (inputChangeEventValue)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
@@ -38,4 +38,5 @@ main = do
           in Just (Right unit)
         _ -> pure Nothing
     , events
+    , signal: noSignal
     }

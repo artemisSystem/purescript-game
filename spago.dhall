@@ -19,6 +19,7 @@ You can edit this file as you like.
     , "psci-support"
     , "record"
     , "refs"
+    , "signal"
     , "undefined"
     , "web-html"
     ]
