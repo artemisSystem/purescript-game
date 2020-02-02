@@ -122,12 +122,12 @@ inputEvent
   -> (t a -> state -> Effect state)
   -> Effect (GameEvent state)
 inputEvent getValue baseEvent inputSelectors update = ado
-  { update } <- inputChangeEvent getValue inputSelectors update >>= case _ of
+  changeEvent <- inputChangeEvent getValue inputSelectors update >>= case _ of
     (x:_) -> pure x
     _ -> throwError (error "Traversable for inputEvent was empty")
   in { eventType: baseEvent.eventType
      , target: baseEvent.target
-     , update: \_ state -> update undefined state
+     , update: \_ state -> changeEvent.update (undefined :: Event) state
      , useCapture: baseEvent.useCapture
      }
 

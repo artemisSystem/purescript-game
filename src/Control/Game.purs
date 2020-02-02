@@ -58,7 +58,7 @@ type Game state return =
   }
 
 -- TODO: Rewrite to make use of Aff better?
--- | Make an `Aff` that will start your game loop when run
+-- | Make an `Aff` that will start the provided game loop when run
 game :: forall s a. Game s a -> Aff a
 game { init, update, display, end, events } = makeAff \cb -> do
   gameWindow <- window
