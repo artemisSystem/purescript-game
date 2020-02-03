@@ -5,17 +5,19 @@ import Prelude
 import Control.Game (canvasGame, noUpdate, noEnd, noSignal)
 import Control.Game.EventHelpers (clickEvent, inputEventValueOne)
 import Data.List (List(..), (:))
+import Data.Symbol (SProxy(..))
 import Data.Vector.Polymorphic ((><))
 import Effect (Effect)
 import Effect.Aff (launchAff_)
 import Graphics.CanvasAction (clearRectFull, fillText, setFont)
+import Record (modify)
 import Web.DOM.ParentNode (QuerySelector(..))
 
 main :: Effect Unit
 main = do
   event1 <- clickEvent
     (QuerySelector "button")
-    \_ s@{ n } -> pure do s { n = n + 1 }
+    \_ -> modify (SProxy :: _ "n") (add 1) >>> pure
   event2 <- inputEventValueOne
     event1
     (QuerySelector "input")

@@ -169,6 +169,9 @@ noEvents :: forall state. List (GameEvent state)
 noEvents = Nil
 
 -- | An empty signal. Set this as the `signal` field in a `Game` or `CanvasGame`
--- | if you're not using signals.
+-- | if you're not using signals. Can also be merged with another signal to make
+-- | its initial value not do anything. (`noSignal <> signal` will yield all
+-- | values from `signal`, except for the initial value, which will not
+-- | affect the state at all.)
 noSignal :: forall state. Signal (state -> Effect state)
 noSignal = constant pure
