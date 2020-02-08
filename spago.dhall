@@ -11,6 +11,7 @@ You can edit this file as you like.
     , "effect"
     , "foldable-traversable"
     , "identity"
+    , "monad-loops"
     , "newtype"
     , "now"
     , "partial"
@@ -20,6 +21,7 @@ You can edit this file as you like.
     , "record"
     , "refs"
     , "signal"
+    , "tailrec"
     , "undefined"
     , "web-html"
     ]

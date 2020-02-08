@@ -1,6 +1,7 @@
 { "private": true
 , "scripts":
-  { "example-inputChangeEvent": "spago bundle-app -m Test.InputChangeEvent.Main -t test/Test/InputChangeEvent/index.js; open test/Test/InputChangeEvent/index.html"
+  { "example-genericGame": "spago run -m Test.GenericGame.Main"
+  , "example-inputChangeEvent": "spago bundle-app -m Test.InputChangeEvent.Main -t test/Test/InputChangeEvent/index.js; open test/Test/InputChangeEvent/index.html"
   , "example-inputEvent": "spago bundle-app -m Test.InputEvent.Main -t test/Test/InputEvent/index.js; open test/Test/InputEvent/index.html"
   , "example-signal": "spago bundle-app -m Test.Signal.Main -t test/Test/Signal/index.js; open test/Test/Signal/index.html"
   }

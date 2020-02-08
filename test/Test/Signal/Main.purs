@@ -1,5 +1,5 @@
 module Test.Signal.Main where
-
+{-
 import Prelude
 
 import Control.Game (canvasGame, noEnd, noEvents, noUpdate, noSignal)

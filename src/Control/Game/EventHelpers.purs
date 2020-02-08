@@ -1,5 +1,6 @@
 module Control.Game.EventHelpers where
-
+--TODO: move to Control.Game.Web.EventHelpers
+{-
 import Prelude
 
 import Control.Game (GameEvent)

@@ -1,5 +1,5 @@
 module Test.InputChangeEvent.Main where
-
+{-
 import Prelude
 
 import Control.Game (canvasGame, noUpdate, noSignal)

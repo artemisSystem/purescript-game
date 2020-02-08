@@ -2,6 +2,8 @@
 
 ## Documentation
 
+### TODO: rewrite this whole thing
+
 This is a package for running a game loop in a browser in purescript using
 `window.requestAnimationFrame`.
 
