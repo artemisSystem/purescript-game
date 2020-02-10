@@ -11,6 +11,8 @@ import Effect (Effect)
 import Effect.Aff (Milliseconds(..), delay, launchAff_)
 import Effect.Class.Console (logShow)
 
+-- example showing errors maybe?
+-- definiety show off the strength of running stuff in parallel - without that, it's fairly useless
 main :: Effect Unit
 main = launchAff_ <<< runGame $ GenericGame
   { init: pure 0
