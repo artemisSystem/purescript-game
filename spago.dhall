@@ -20,7 +20,6 @@ You can edit this file as you like.
     , "psci-support"
     , "record"
     , "refs"
-    , "signal"
     , "tailrec"
     , "undefined"
     , "web-html"
