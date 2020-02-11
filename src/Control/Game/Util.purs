@@ -2,7 +2,10 @@ module Control.Game.Util where
 
 import Prelude
 
+import Data.Int (floor)
 import Data.Maybe (Maybe)
+import Data.Newtype (un)
+import Data.Time.Duration (class Duration, Milliseconds(..), fromDuration)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref (Ref)
@@ -34,6 +37,9 @@ modifyRef' f ref = liftEffect (R.modify' f ref)
 
 modifyRef_ :: forall m s. MonadEffect m => (s -> s) -> Ref s -> m Unit
 modifyRef_ f ref = liftEffect (R.modify_ f ref)
+
+durationToInt :: forall d. Duration d => d -> Int
+durationToInt = fromDuration >>> un Milliseconds >>> floor
 
 -- | `querySelector` without having to supply a `ParentNode`, using the
 -- | document as parent node.

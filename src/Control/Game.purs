@@ -1,57 +1,48 @@
-module Control.Game where
+module Control.Game
+  ( after
+  , every
+  , everyUntil
+  , UpdateEvery
+
+  , module Exports
+  ) where
 
 import Prelude
 
-import Control.Game.Util (newRef)
-import Control.Parallel (parOneOfMap)
-import Data.Either (either)
+import Control.Game.Types (class ToUpdate, EffectUpdate, toEffect)
+import Control.Game.Types (Game, class ToGame, runGame, class ToUpdate, addToGame, EffectUpdate, toEffect) as Exports
+import Control.Game.Util (durationToInt)
+import Control.Monad.Loops (untilJust)
+import Control.Monad.Rec.Class (forever)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe)
-import Data.List (List, (:))
-import Data.Symbol (SProxy(..))
+import Data.Newtype (class Newtype)
+import Data.Time.Duration (class Duration)
 import Effect (Effect)
-import Effect.Aff (Aff, throwError, try)
-import Effect.Ref (Ref)
-import Data.Newtype (class Newtype, over)
-import Record (modify)
+import Effect.Aff (Aff, effectCanceler, makeAff)
+import Effect.Timer (clearTimeout, setTimeout)
+
+after :: forall d a. Duration d => d -> Effect a -> Aff a
+after d effect = makeAff \cb -> ado
+  id <- setTimeout (durationToInt d) do
+    a <- effect
+    cb (Right a)
+  in effectCanceler (clearTimeout id)
+
+every :: forall d. Duration d => d -> Effect Unit -> Aff Void
+every d effect = forever (after d effect)
+
+everyUntil :: forall d a. Duration d => d -> Effect (Maybe a) -> Aff a
+everyUntil d effect = untilJust (after d effect)
 
 
-newtype Game s a = Game
-  { init :: Aff s
-  , update :: List (Ref s -> Aff a)
+newtype UpdateEvery t s a = UpdateEvery
+  { update :: EffectUpdate s a
+  , time   :: t
   }
 
-derive instance newtypeGame :: Newtype (Game s a) _
+derive instance newtypeUpdateEvery :: Newtype (UpdateEvery t s a) _
 
-runSimpleGame :: forall s a. Game s a -> Aff a
-runSimpleGame (Game { init, update }) = do
-  state <- init >>= newRef
-  update # parOneOfMap do (_ $ state) >>> try
-         # (=<<) (either throwError pure)
-
-class ToGame s a g | g -> s a where
-  toGame :: g -> Aff (Game s a)
-
-instance toGameGame :: ToGame s a (Game s a) where
-  toGame = pure
-
-runGame :: forall game s a. ToGame s a game => game -> Aff a
-runGame = toGame >=> runSimpleGame
-
-
-class ToUpdate s a u | u -> s a where
-  toUpdate :: u -> (Ref s -> Aff a)
-
-addToGame :: forall s a u. ToUpdate s a u => u -> Game s a -> Game s a
-addToGame u = over Game $ modify (SProxy :: _ "update") (toUpdate u : _)
-
--- TODO: unsure about this
-type EffectGameUpdate s a =
-  { step    :: s -> Effect s
-  , render  :: s -> Effect Unit
-  , resolve :: s -> Effect (Maybe a)
-  }
-
--- TODO: should this go in this module? or somewhere else
--- after :: Duration d => d -> Effect a -> Aff a
--- every :: Duration d => d -> Effect Unit -> Aff Void
--- everyUntil :: Duration d => d -> Effect (Maybe a) -> Aff a
+instance toUpdateUpdateEvery :: Duration t => ToUpdate s a (UpdateEvery t s a) where
+  toUpdate (UpdateEvery { update, time }) =
+    \ref -> everyUntil time (toEffect update ref)
