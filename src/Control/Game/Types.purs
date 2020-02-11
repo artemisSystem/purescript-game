@@ -5,6 +5,7 @@ import Prelude
 import Control.Game.Util (newRef, readRef, writeRef)
 import Control.Parallel (parOneOfMap)
 import Data.Either (either)
+import Data.Foldable
 import Data.Maybe (Maybe)
 import Data.List (List, (:))
 import Data.Symbol (SProxy(..))
@@ -38,12 +39,27 @@ runGame :: forall game s a. ToGame s a game => game -> Aff a
 runGame = toGame >=> runSimpleGame
 
 
-class ToUpdate s a u | u -> s a where
+class ToUpdate s a u where
   toUpdate :: u -> (Ref s -> Aff a)
+
+instance toUpdateRefAff :: ToUpdate s a (Ref s -> Aff a) where
+  toUpdate = identity
+
+instance toUpdateAff :: ToUpdate s a (Aff a) where
+  toUpdate = const
 
 addToGame :: forall s a u. ToUpdate s a u => u -> Game s a -> Game s a
 addToGame u = over Game $ modify (SProxy :: _ "update") (toUpdate u : _)
 
+infixr 5 addToGame as :+
+
+addMultipleToGame
+  :: forall f s a u
+   . Foldable f => ToUpdate s a u
+  => f u -> Game s a -> Game s a
+addMultipleToGame us game = foldr (:+) game us
+
+infixr 5 addMultipleToGame as :++
 
 type EffectUpdate s a =
   { step    :: s -> Effect s
