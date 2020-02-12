@@ -5,9 +5,9 @@ import Prelude
 import Control.Game.Util (newRef, readRef, writeRef)
 import Control.Parallel (parOneOfMap)
 import Data.Either (either)
-import Data.Foldable
+import Data.Foldable (class Foldable, foldr)
 import Data.Maybe (Maybe)
-import Data.List (List, (:))
+import Data.List (List, singleton, (:))
 import Data.Symbol (SProxy(..))
 import Effect (Effect)
 import Effect.Aff (Aff, throwError, try)
@@ -29,11 +29,17 @@ runSimpleGame (Game { init, update }) = do
   update # parOneOfMap do (_ $ state) >>> try
          # (=<<) (either throwError pure)
 
-class ToGame s a g | g -> s a where
+class ToGame s a g | g -> s where
   toGame :: g -> Aff (Game s a)
 
 instance toGameGame :: ToGame s a (Game s a) where
   toGame = pure
+
+instance toGameAff :: ToGame Unit a (Aff a) where
+  toGame aff = pure $ Game
+    { init: pure unit
+    , update: singleton \_ -> aff
+    }
 
 runGame :: forall game s a. ToGame s a game => game -> Aff a
 runGame = toGame >=> runSimpleGame
@@ -60,6 +66,7 @@ addMultipleToGame
 addMultipleToGame us game = foldr (:+) game us
 
 infixr 5 addMultipleToGame as :++
+
 
 type EffectUpdate s a =
   { step    :: s -> Effect s
