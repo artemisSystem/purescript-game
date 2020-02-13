@@ -2,10 +2,13 @@ module Control.Game.Util where
 
 import Prelude
 
+import Control.Monad.Loops (iterateUntilM)
 import Data.Int (floor)
 import Data.Maybe (Maybe)
 import Data.Newtype (un)
-import Data.Time.Duration (class Duration, Milliseconds(..), fromDuration)
+import Data.Time.Duration (class Duration, Milliseconds(..), fromDuration, toDuration, Seconds)
+import Data.DateTime.Instant (unInstant)
+import Effect.Now (now)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref (Ref)
@@ -16,6 +19,8 @@ import Web.HTML (window)
 import Web.HTML.HTMLDocument (toParentNode)
 import Web.HTML.Window (document)
 
+import Effect.Aff
+import Effect.Class.Console
 
 newRef :: forall m s. MonadEffect m => s -> m (Ref s)
 newRef v = liftEffect (R.new v)
@@ -40,6 +45,18 @@ modifyRef_ f ref = liftEffect (R.modify_ f ref)
 
 durationToInt :: forall d. Duration d => d -> Int
 durationToInt = fromDuration >>> un Milliseconds >>> floor
+
+nowSeconds :: Effect Seconds
+nowSeconds = now <#> (unInstant >>> toDuration)
+
+iterateM :: forall m a b. Monad m => (a -> m a) -> m a -> m b
+iterateM f ma = ma >>= (f >>> iterateM f)
+
+iterateUntilM'
+  :: forall m a
+   . Monad m
+  => (a -> Boolean) -> (a -> m a) -> m a -> m a
+iterateUntilM' p f ma = ma >>= iterateUntilM p f
 
 -- | `querySelector` without having to supply a `ParentNode`, using the
 -- | document as parent node.

@@ -1,5 +1,5 @@
 module Test.GenericGame.Main where
-
+{-
 import Prelude
 
 import Control.Game (GenericGame(..), runGame)
