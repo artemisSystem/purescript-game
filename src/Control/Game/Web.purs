@@ -14,21 +14,20 @@ module Control.Game.Web
 
 import Prelude
 
-import Control.Game
-import Control.Game.Util
-import Control.Monad.Loops (untilJust)
-import Control.Monad.Rec.Class (forever)
-import Data.Either
-import Data.Maybe
-import Data.Newtype
+import Control.Game (class ToUpdate, EffectUpdate, toEffect, toUpdate)
+import Control.Game.Util (iterateM, iterateUntilM', newRef, nowSeconds, readRef, writeRef)
+import Data.Either (Either(..))
+import Data.Foldable (traverse_)
+import Data.Maybe (Maybe(..), fromJust, isJust)
+import Data.Newtype (class Newtype, over2)
 import Data.Time.Duration (Seconds(..))
-import Data.Tuple
-import Effect
-import Effect.Aff
-import Effect.Class
+import Data.Tuple (Tuple(..), snd)
+import Effect (Effect)
+import Effect.Aff (Aff, effectCanceler, makeAff)
+import Effect.Class (liftEffect)
 import Partial.Unsafe (unsafePartial)
-import Web.Event.Event
-import Web.Event.EventTarget
+import Web.Event.Event (Event, EventType)
+import Web.Event.EventTarget (EventTarget, addEventListener, eventListener, removeEventListener)
 import Web.HTML (window) as W
 import Web.HTML.Window (requestAnimationFrame, cancelAnimationFrame) as W
 import Web.HTML.Window (Window)
@@ -106,4 +105,16 @@ newtype GameEvent s a = GameEvent
   , useCapture :: Boolean
   }
 
--- TODO: instance toUpdateGameEvent :: ToUpdate s a (GameEvent s a) where
+instance toUpdateGameEvent :: ToUpdate s a (GameEvent s a) where
+  toUpdate (GameEvent { eventType, target, update, useCapture }) =
+    \ref -> makeAff \cb -> do
+      listenerRef <- newRef Nothing
+      let canceler = readRef listenerRef >>= traverse_ \l ->
+            removeEventListener eventType l useCapture target
+      listener <- eventListener \event ->
+        toEffect (update event) ref >>= case _ of
+          Just a -> canceler *> cb (Right a)
+          Nothing -> pure unit
+      writeRef (Just listener) listenerRef
+      addEventListener eventType listener useCapture target
+      pure $ effectCanceler canceler

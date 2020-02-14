@@ -6,7 +6,7 @@ import Control.Monad.Loops (iterateUntilM)
 import Data.Int (floor)
 import Data.Maybe (Maybe)
 import Data.Newtype (un)
-import Data.Time.Duration (class Duration, Milliseconds(..), fromDuration, toDuration, Seconds)
+import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
 import Data.DateTime.Instant (unInstant)
 import Effect.Now (now)
 import Effect (Effect)
@@ -19,8 +19,7 @@ import Web.HTML (window)
 import Web.HTML.HTMLDocument (toParentNode)
 import Web.HTML.Window (document)
 
-import Effect.Aff
-import Effect.Class.Console
+import Effect.Aff (Milliseconds(..))
 
 newRef :: forall m s. MonadEffect m => s -> m (Ref s)
 newRef v = liftEffect (R.new v)
