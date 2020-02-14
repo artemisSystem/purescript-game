@@ -65,7 +65,7 @@ addMultipleToGame
   => f u -> Game s a -> Game s a
 addMultipleToGame us game = foldr (:+) game us
 
-infixr 5 addMultipleToGame as :++
+infixr 5 addMultipleToGame as :*
 
 
 type EffectUpdate s a =

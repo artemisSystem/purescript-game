@@ -10,7 +10,7 @@ module Control.Game
 import Prelude
 
 import Control.Game.Types (class ToUpdate, EffectUpdate, toEffect)
-import Control.Game.Types (Game, class ToGame, runGame, class ToUpdate, toUpdate, addToGame, (:+), addMultipleToGame, (:++), EffectUpdate, toEffect) as Exports
+import Control.Game.Types (Game, class ToGame, runGame, class ToUpdate, toUpdate, addToGame, (:+), addMultipleToGame, (:*), EffectUpdate, toEffect) as Exports
 import Control.Game.Util (durationToInt)
 import Control.Monad.Loops (untilJust)
 import Control.Monad.Rec.Class (forever)
