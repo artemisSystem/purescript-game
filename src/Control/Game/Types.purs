@@ -57,15 +57,24 @@ instance toUpdateAff :: ToUpdate s a (Aff a) where
 addToGame :: forall s a u. ToUpdate s a u => u -> Game s a -> Game s a
 addToGame u = over Game $ modify (SProxy :: _ "update") (toUpdate u : _)
 
-infixr 5 addToGame as :+
+addToGameFlipped :: forall s a u. ToUpdate s a u => Game s a -> u -> Game s a
+addToGameFlipped = flip addToGame
+
+infixl 5 addToGameFlipped as :+
 
 addMultipleToGame
   :: forall f s a u
    . Foldable f => ToUpdate s a u
   => f u -> Game s a -> Game s a
-addMultipleToGame us game = foldr (:+) game us
+addMultipleToGame us game = foldr addToGame game us
 
-infixr 5 addMultipleToGame as :*
+addMultipleToGameFlipped
+  :: forall f s a u
+   . Foldable f => ToUpdate s a u
+  => Game s a -> f u -> Game s a
+addMultipleToGameFlipped = flip addMultipleToGame
+
+infixl 5 addMultipleToGameFlipped as :*
 
 
 type EffectUpdate s a =

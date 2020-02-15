@@ -2,35 +2,32 @@ module Control.Game.Web
   ( requestAnimationFrame
   , requestAnimationFrames
   , requestAnimationFramesUntil
-  , AnimationFrameUpdate
+  , AnimationFrameUpdate(..)
 
   , requestAnimationFrame'
   , requestAnimationFrames'
   , requestAnimationFramesUntil'
-  , AnimationFrameUpdate'
+  , AnimationFrameUpdate'(..)
 
-  , GameEvent
+  , GameEvent(..)
+  , WebGame(..)
   ) where
 
 import Prelude
 
-import Control.Game (class ToUpdate, EffectUpdate, toEffect, toUpdate)
+import Control.Game (class ToGame, class ToUpdate, EffectUpdate, Game(..), toEffect, toUpdate, (:*), (:+))
 import Control.Game.Util (iterateM, iterateUntilM', newRef, nowSeconds, readRef, writeRef)
 import Data.Either (Either(..))
 import Data.Foldable (traverse_)
-import Data.List
+import Data.List (List(..))
 import Data.Maybe (Maybe(..), fromJust, isJust)
-import Data.Newtype (class Newtype, over, over2)
+import Data.Newtype (class Newtype, over2)
 import Data.Time.Duration (Seconds(..))
 import Data.Tuple (Tuple(..), snd)
-import Data.Symbol
 import Effect (Effect)
 import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Class (liftEffect)
-import Graphics.CanvasAction
 import Partial.Unsafe (unsafePartial)
-import Record
-import Web.DOM.ParentNode
 import Web.Event.Event (Event, EventType)
 import Web.Event.EventTarget (EventTarget, addEventListener, eventListener, removeEventListener)
 import Web.HTML (window) as W
@@ -131,4 +128,20 @@ instance toUpdateGameEvent :: ToUpdate s a (GameEvent s a) where
       addEventListener eventType listener useCapture target
       pure $ effectCanceler canceler
 
--- TODO: WebGame
+
+newtype WebGame s a = WebGame
+  { init   :: Aff s
+  , frames :: Seconds -> EffectUpdate s a
+  , events :: List (GameEvent s a)
+  }
+
+derive instance newtypeWebGame :: Newtype (WebGame s a) _
+
+instance toGameWebGame :: ToGame s a (WebGame s a) where
+  toGame (WebGame { init, frames, events }) = pure $
+    (  Game { init, update: Nil }
+    :+ do frames <#> toEffect
+            # flip
+            # map requestAnimationFramesUntil
+    :* events
+    )

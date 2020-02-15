@@ -2,29 +2,28 @@ module Control.Game.Web.Canvas where
 
 import Prelude
 
-import Control.Game (class ToUpdate, EffectUpdate, toEffect, toUpdate)
-import Control.Game.Util (iterateM, iterateUntilM', newRef, nowSeconds, readRef, writeRef)
-import Control.Game.Web
-import Data.Either (Either(..))
-import Data.Foldable (traverse_)
-import Data.List
-import Data.Maybe (Maybe(..), fromJust, isJust)
-import Data.Newtype (class Newtype, over, over2)
-import Data.Time.Duration (Seconds(..))
-import Data.Tuple (Tuple(..), snd)
-import Data.Symbol
+import Control.Game (class ToGame, EffectUpdate, toGame)
+import Control.Game.Web (GameEvent, WebGame(..))
+import Control.Game.Web.Util (qSel)
+import Control.Monad.Error.Class (throwError)
+import Data.List (List)
+import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype, over)
+import Data.Time.Duration (Seconds)
+import Data.Traversable (for)
+import Data.Symbol (SProxy(..))
 import Effect (Effect)
-import Effect.Aff (Aff, effectCanceler, makeAff)
+import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Graphics.CanvasAction
-import Partial.Unsafe (unsafePartial)
-import Record
-import Web.DOM.ParentNode
+import Effect.Exception (error)
+import Graphics.Canvas as C
+import Graphics.CanvasAction (CanvasAction, Context2D, runAction)
+import Record (modify)
+import Unsafe.Coerce (unsafeCoerce)
+import Web.DOM.ParentNode (QuerySelector)
 import Web.Event.Event (Event, EventType)
-import Web.Event.EventTarget (EventTarget, addEventListener, eventListener, removeEventListener)
-import Web.HTML (window) as W
-import Web.HTML.Window (requestAnimationFrame, cancelAnimationFrame) as W
-import Web.HTML.Window (Window)
+import Web.Event.EventTarget (EventTarget)
+import Web.HTML.HTMLCanvasElement (fromElement, HTMLCanvasElement)
 
 
 type CanvasUpdate s a =
@@ -55,6 +54,27 @@ newtype CanvasGame s a = CanvasGame
   { canvas :: QuerySelector
   , init   :: Aff s
   , setup  :: CanvasAction
-  , update :: Seconds -> CanvasUpdate s a
+  , frames :: Seconds -> CanvasUpdate s a
   , events :: List (CanvasGameEvent s a)
   }
+
+derive instance newtypeCanvasGame :: Newtype (CanvasGame s a) _
+
+instance toGameCanvasGame :: ToGame s a (CanvasGame s a) where
+  toGame (CanvasGame { canvas, init, setup, frames, events }) = do
+    ctx <- liftEffect getCtx >>= case _ of
+      Nothing -> throwError (error "The canvas for canvasGame was not found.")
+      Just ctx -> pure ctx
+    toGame $ WebGame
+      { init: init <* liftEffect (runAction ctx setup)
+      , frames: frames <#> toEffectUpdate ctx
+      , events: events <#> toGameEvent ctx
+      }
+    where
+      toCanvasElement :: HTMLCanvasElement -> C.CanvasElement
+      toCanvasElement = unsafeCoerce
+      getCtx = do
+        mCanv <- qSel canvas
+          <#> (=<<) fromElement
+          <#> map toCanvasElement
+        for mCanv C.getContext2D

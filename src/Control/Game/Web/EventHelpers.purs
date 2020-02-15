@@ -1,5 +1,5 @@
-module Control.Game.EventHelpers where
---TODO: move to Control.Game.Web.EventHelpers
+module Control.Game.Web.EventHelpers where
+
 {-
 import Prelude
 
@@ -24,7 +24,7 @@ import Web.HTML.HTMLInputElement (fromElement, toEventTarget, value, valueAsNumb
 
 -- TODO:
 -- Note: `Kleisli m a` is being used to denote a function of type (a -> m a),
--- not assuming the actual newtype (called Star) will be used
+-- not inferring the actual newtype (called Star) will be used
 -- mouse clicks: (event -> Kleisli effect)
 -- mouse clicks: (position -> Kleisli effect)
 -- mouse clicks: (position within some element -> Kleisli effect)
