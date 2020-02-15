@@ -18,22 +18,24 @@ import Control.Game (class ToUpdate, EffectUpdate, toEffect, toUpdate)
 import Control.Game.Util (iterateM, iterateUntilM', newRef, nowSeconds, readRef, writeRef)
 import Data.Either (Either(..))
 import Data.Foldable (traverse_)
+import Data.List
 import Data.Maybe (Maybe(..), fromJust, isJust)
-import Data.Newtype (class Newtype, over2)
+import Data.Newtype (class Newtype, over, over2)
 import Data.Time.Duration (Seconds(..))
 import Data.Tuple (Tuple(..), snd)
+import Data.Symbol
 import Effect (Effect)
 import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Class (liftEffect)
+import Graphics.CanvasAction
 import Partial.Unsafe (unsafePartial)
+import Record
+import Web.DOM.ParentNode
 import Web.Event.Event (Event, EventType)
 import Web.Event.EventTarget (EventTarget, addEventListener, eventListener, removeEventListener)
 import Web.HTML (window) as W
 import Web.HTML.Window (requestAnimationFrame, cancelAnimationFrame) as W
 import Web.HTML.Window (Window)
-
--- TODO: `WebGame` and `CanvasGame`, which have `ToGame` instances
--- TODO: `CanvasUpdate`, similar to `EffectUpdate` (maybe, maybe not)
 
 
 requestAnimationFrame' :: forall a. Effect a -> Window -> Aff a
@@ -63,7 +65,6 @@ requestAnimationFramesUntil' effect w = fixReturn $ iterateUntilM'
       effect (over2 Seconds (-) t t0) <#> Tuple t
     fixReturn = map (snd >>> unsafePartial fromJust)
 
-
 newtype AnimationFrameUpdate' s a = AnimationFrameUpdate'
   { window :: Window
   , update :: Seconds -> EffectUpdate s a
@@ -75,14 +76,23 @@ instance toUpdateAnimationFrameUpdate' :: ToUpdate s a (AnimationFrameUpdate' s 
   toUpdate (AnimationFrameUpdate' { window, update }) =
     \ref -> requestAnimationFramesUntil' (update >>> (_ `toEffect` ref)) window
 
+
+-- | Returns an `Aff` that runs the given effect and resolves with its result on
+-- | the next animation frame
 requestAnimationFrame :: forall a. Effect a -> Aff a
 requestAnimationFrame effect =
   liftEffect W.window >>= requestAnimationFrame' effect
 
+-- | Returns an `Aff` that runs forever unless cancelled, and calls the provided
+-- | effect with the time since the last animation frame in seconds every
+-- | animation frame
 requestAnimationFrames :: (Seconds -> Effect Unit) -> Aff Void
 requestAnimationFrames effect =
   liftEffect W.window >>= requestAnimationFrames' effect
 
+-- | Returns an `Aff` that calls the provided effect with the time since the
+-- | previous animation frame. When The effect returns a `Just`, it resolves
+-- | with the contained value.
 requestAnimationFramesUntil :: forall a. (Seconds -> Effect (Maybe a)) -> Aff a
 requestAnimationFramesUntil effect =
   liftEffect W.window >>= requestAnimationFramesUntil' effect
@@ -105,6 +115,8 @@ newtype GameEvent s a = GameEvent
   , useCapture :: Boolean
   }
 
+derive instance newTypeGameEvent :: Newtype (GameEvent s a) _
+
 instance toUpdateGameEvent :: ToUpdate s a (GameEvent s a) where
   toUpdate (GameEvent { eventType, target, update, useCapture }) =
     \ref -> makeAff \cb -> do
@@ -118,3 +130,5 @@ instance toUpdateGameEvent :: ToUpdate s a (GameEvent s a) where
       writeRef (Just listener) listenerRef
       addEventListener eventType listener useCapture target
       pure $ effectCanceler canceler
+
+-- TODO: WebGame

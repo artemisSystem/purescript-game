@@ -4,22 +4,15 @@ import Prelude
 
 import Control.Monad.Loops (iterateUntilM)
 import Data.Int (floor)
-import Data.Maybe (Maybe)
 import Data.Newtype (un)
 import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
 import Data.DateTime.Instant (unInstant)
 import Effect.Now (now)
 import Effect (Effect)
+import Effect.Aff (Milliseconds(..))
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref (Ref)
 import Effect.Ref (new, read, write, modify, modify', modify_) as R
-import Web.DOM.Element (Element)
-import Web.DOM.ParentNode (QuerySelector, querySelector)
-import Web.HTML (window)
-import Web.HTML.HTMLDocument (toParentNode)
-import Web.HTML.Window (document)
-
-import Effect.Aff (Milliseconds(..))
 
 newRef :: forall m s. MonadEffect m => s -> m (Ref s)
 newRef v = liftEffect (R.new v)
@@ -56,10 +49,3 @@ iterateUntilM'
    . Monad m
   => (a -> Boolean) -> (a -> m a) -> m a -> m a
 iterateUntilM' p f ma = ma >>= iterateUntilM p f
-
--- | `querySelector` without having to supply a `ParentNode`, using the
--- | document as parent node.
-qSel :: QuerySelector -> Effect (Maybe Element)
-qSel sel = do
-  doc <- window >>= document <#> toParentNode
-  querySelector sel doc
