@@ -88,7 +88,7 @@ requestAnimationFrames effect =
   liftEffect W.window >>= requestAnimationFrames' effect
 
 -- | Returns an `Aff` that calls the provided effect with the time since the
--- | previous animation frame. When The effect returns a `Just`, it resolves
+-- | previous animation frame. When the effect returns a `Just`, it resolves
 -- | with the contained value.
 requestAnimationFramesUntil :: forall a. (Seconds -> Effect (Maybe a)) -> Aff a
 requestAnimationFramesUntil effect =
