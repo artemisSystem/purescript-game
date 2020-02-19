@@ -27,6 +27,7 @@ import Data.Tuple (Tuple(..), snd)
 import Effect (Effect)
 import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Class (liftEffect)
+import Effect.Ref (Ref)
 import Partial.Unsafe (unsafePartial)
 import Web.Event.Event (Event, EventType)
 import Web.Event.EventTarget (EventTarget, addEventListener, eventListener, removeEventListener)
@@ -108,7 +109,7 @@ instance toUpdateAnimationFrameUpdate :: ToUpdate s a (AnimationFrameUpdate s a)
 newtype GameEvent s a = GameEvent
   { eventType  :: EventType
   , target     :: EventTarget
-  , update     :: Event -> EffectUpdate s a
+  , update     :: Event -> Ref s -> Effect (Maybe a)
   , useCapture :: Boolean
   }
 
@@ -121,7 +122,7 @@ instance toUpdateGameEvent :: ToUpdate s a (GameEvent s a) where
       let canceler = readRef listenerRef >>= traverse_ \l ->
             removeEventListener eventType l useCapture target
       listener <- eventListener \event ->
-        toEffect (update event) ref >>= case _ of
+        update event ref >>= case _ of
           Just a -> canceler *> cb (Right a)
           Nothing -> pure unit
       writeRef (Just listener) listenerRef
