@@ -1,48 +1,76 @@
-module Control.Game
-  ( after
-  , every
-  , everyUntil
-  , UpdateEvery(..)
-
-  , module Exports
-  ) where
+module Control.Game where
 
 import Prelude
 
-import Control.Game.Types (class ToUpdate, EffectUpdate, toEffect)
-import Control.Game.Types (class ToGame, class ToUpdate, EffectUpdate, Game(..), addMultipleToGame, addToGame, runGame, toEffect, toGame, toUpdate, (:*), (:+)) as Exports
-import Control.Game.Util (durationToInt)
-import Control.Monad.Loops (untilJust)
-import Control.Monad.Rec.Class (forever)
-import Data.Either (Either(..))
+import Control.Game.Util (newRef, readRef, writeRef)
+import Control.Parallel (parOneOfMap)
+import Data.Either (either)
+import Data.Foldable (class Foldable, foldr)
 import Data.Maybe (Maybe)
-import Data.Newtype (class Newtype)
-import Data.Time.Duration (class Duration)
+import Data.Symbol (SProxy(..))
 import Effect (Effect)
-import Effect.Aff (Aff, effectCanceler, makeAff)
-import Effect.Timer (clearTimeout, setTimeout)
-
-after :: forall d a. Duration d => d -> Effect a -> Aff a
-after d effect = makeAff \cb -> ado
-  id <- setTimeout (durationToInt d) do
-    a <- effect
-    cb (Right a)
-  in effectCanceler (clearTimeout id)
-
-every :: forall d. Duration d => d -> Effect Unit -> Aff Void
-every d effect = forever (after d effect)
-
-everyUntil :: forall d a. Duration d => d -> Effect (Maybe a) -> Aff a
-everyUntil d effect = untilJust (after d effect)
+import Effect.Aff (Aff, throwError, try)
+import Effect.Ref (Ref)
+import Data.Newtype (class Newtype, over)
+import Record (modify)
 
 
-newtype UpdateEvery t s a = UpdateEvery
-  { update   :: EffectUpdate s a
-  , interval :: t
+newtype Game s a = Game
+  { init   :: Aff s
+  , update :: Array (Ref s -> Aff a)
   }
 
-derive instance newtypeUpdateEvery :: Newtype (UpdateEvery t s a) _
+derive instance newtypeGame :: Newtype (Game s a) _
 
-instance toUpdateUpdateEvery :: Duration t => ToUpdate s a (UpdateEvery t s a) where
-  toUpdate (UpdateEvery { update, interval }) =
-    \ref -> everyUntil interval (toEffect update ref)
+runSimpleGame :: forall s a. Game s a -> Aff a
+runSimpleGame (Game { init, update }) = do
+  state <- init >>= newRef
+  update # parOneOfMap do (_ $ state) >>> try
+         # (=<<) (either throwError pure)
+
+class ToGame s a g | g -> s where
+  toGame :: g -> Aff (Game s a)
+
+instance toGameGame :: ToGame s a (Game s a) where
+  toGame = pure
+
+instance toGameAff :: ToGame Unit a (Aff a) where
+  toGame aff = pure $ Game
+    { init: pure unit
+    , update: [\_ -> aff]
+    }
+
+runGame :: forall game s a. ToGame s a game => game -> Aff a
+runGame = toGame >=> runSimpleGame
+
+
+class ToUpdate s a u where
+  toUpdate :: u -> (Ref s -> Aff a)
+
+instance toUpdateRefAff :: ToUpdate s a (Ref s -> Aff a) where
+  toUpdate = identity
+
+instance toUpdateAff :: ToUpdate s a (Aff a) where
+  toUpdate = const
+
+addToGame :: forall s a u. ToUpdate s a u => u -> Game s a -> Game s a
+addToGame u = over Game $ modify (SProxy :: _ "update") (_ <> [toUpdate u])
+
+addToGameFlipped :: forall s a u. ToUpdate s a u => Game s a -> u -> Game s a
+addToGameFlipped = flip addToGame
+
+infixl 5 addToGameFlipped as :+
+
+addMultipleToGame
+  :: forall f s a u
+   . Foldable f => ToUpdate s a u
+  => f u -> Game s a -> Game s a
+addMultipleToGame us game = foldr addToGame game us
+
+addMultipleToGameFlipped
+  :: forall f s a u
+   . Foldable f => ToUpdate s a u
+  => Game s a -> f u -> Game s a
+addMultipleToGameFlipped = flip addMultipleToGame
+
+infixl 5 addMultipleToGameFlipped as :*

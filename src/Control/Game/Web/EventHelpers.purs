@@ -1,10 +1,12 @@
 module Control.Game.Web.EventHelpers where
 
-{-
+
 import Prelude
 
-import Control.Game (GameEvent)
-import Control.Game.Util (qSel)
+import Control.Game
+import Control.Game.Util
+import Control.Game.Web
+import Control.Game.Web.Util
 import Control.Monad.Error.Class (throwError)
 import Data.List (List, fromFoldable, (:))
 import Data.List.Partial (head)
@@ -14,11 +16,13 @@ import Data.Newtype (unwrap)
 import Data.Traversable (class Traversable, traverse, sequence)
 import Effect (Effect)
 import Effect.Exception (error)
+import Effect.Ref (Ref)
 import Partial.Unsafe (unsafePartial)
 import Undefined (undefined)
 import Web.DOM.Element (toEventTarget)
 import Web.DOM.ParentNode (QuerySelector)
 import Web.Event.Event (Event, EventType(..))
+import Web.Event.EventTarget (EventTarget)
 import Web.HTML.HTMLInputElement (HTMLInputElement)
 import Web.HTML.HTMLInputElement (fromElement, toEventTarget, value, valueAsNumber) as Input
 
@@ -37,141 +41,101 @@ import Web.HTML.HTMLInputElement (fromElement, toEventTarget, value, valueAsNumb
 
 -- | Create a `GameEvent` that fires when the specified element is clicked
 clickEvent
-  :: forall state
+  :: forall s a
    . QuerySelector
-  -> (Event -> state -> Effect state)
-  -> Effect (GameEvent state)
+  -> (Event -> Ref s -> Effect (Maybe a))
+  -> Effect (GameEvent s a)
 clickEvent elem update = ado
   target <- qSel elem <#> map toEventTarget >>= case _ of
     Just target -> pure target
     Nothing -> throwError (error "Element for clickEvent not found")
-  in { eventType: EventType "click"
-     , target
-     , update
-     , useCapture: false
-     }
+  in GameEvent
+    { eventType: EventType "click"
+    , target
+    , update
+    , useCapture: false
+    }
 
-inputChangeEvent
-  :: forall t a state
+
+target :: QuerySelector -> Effect (Maybe EventTarget)
+target = qSel >>> (map <<< map) toEventTarget
+
+allTargets :: QuerySelector -> Effect (Array EventTarget)
+allTargets = qSelAll >>> (map <<< map) toEventTarget
+
+{- 
+mkInputUpdate
+  :: forall m t v s a
    . Traversable t
-  => (HTMLInputElement -> Effect a)
+  => MonadEffect m
+  => (HTMLInputElement -> Effect v)
   -> t QuerySelector
-  -> (t a -> state -> Effect state)
-  -> Effect (List (GameEvent state))
+  -> (t v -> Ref s -> m (Maybe a))
+  -> (Ref s -> m (Maybe a))
+ -}
+ 
+{- 
+inputChangeEvent
+  :: forall t v s a
+   . Traversable t
+  => (HTMLInputElement -> Effect v)
+  -> t QuerySelector
+  -> (t v -> EffectUpdate s a)
+  -> Effect (t (GameEvent s a))
 inputChangeEvent getValue inputSelectors update = ado
   inputs <- qSel <$> inputSelectors
     # (map sequence <<< sequence)
     # (map <<< (=<<) <<< traverse) Input.fromElement
     # (=<<) case _ of
-      Just is -> pure is
-      Nothing -> throwError (error "Input for inputEvent not found")
-  in fromFoldable inputs <#> Input.toEventTarget <#> \target ->
+        Just is -> pure is
+        Nothing -> throwError (error "Input for inputEvent not found")
+  in inputs <#> Input.toEventTarget <#> \target ->
     { eventType: EventType "change"
     , target
-    , update: \_ state -> do
+    , update: \_ -> do
         values <- traverse getValue inputs
-        update values state
+        update values
     , useCapture: false
     }
 
 inputChangeEventValue
-  :: forall t state
+  :: forall t s a
    . Traversable t
   => t QuerySelector
-  -> (t String -> state -> Effect state)
-  -> Effect (List (GameEvent state))
+  -> (t String -> EffectUpdate s a)
+  -> Effect (List (GameEvent s a))
 inputChangeEventValue = inputChangeEvent Input.value
 
 inputChangeEventNumber
-  :: forall t state
+  :: forall t s a
    . Traversable t
   => t QuerySelector
-  -> (t Number -> state -> Effect state)
-  -> Effect (List (GameEvent state))
+  -> (t Number -> EffectUpdate s a)
+  -> Effect (List (GameEvent s a))
 inputChangeEventNumber = inputChangeEvent Input.valueAsNumber
 
 inputChangeEventOne
-  :: forall a state
-   . (HTMLInputElement -> Effect a)
+  :: forall v s a
+   . (HTMLInputElement -> Effect v)
   -> QuerySelector
-  -> (a -> state -> Effect state)
-  -> Effect (GameEvent state)
+  -> (v -> EffectUpdate s a)
+  -> Effect (GameEvent s a)
 inputChangeEventOne getValue inputSelector update = unsafePartial head <$>
   inputChangeEvent getValue (Identity inputSelector) (unwrap >>> update)
 
 inputChangeEventValueOne
-  :: forall state
+  :: forall s a
    . QuerySelector
-  -> (String -> state -> Effect state)
-  -> Effect (GameEvent state)
+  -> (String -> EffectUpdate s a)
+  -> Effect (GameEvent s a)
 inputChangeEventValueOne = inputChangeEventOne Input.value
 
 inputChangeEventNumberOne
-  :: forall state
+  :: forall s a
    . QuerySelector
-  -> (Number -> state -> Effect state)
-  -> Effect (GameEvent state)
+  -> (Number -> EffectUpdate s a)
+  -> Effect (GameEvent s a)
 inputChangeEventNumberOne = inputChangeEventOne Input.valueAsNumber
 
 -- TODO: docs about how this doesnt run the update function of the original event
-inputEvent
-  :: forall t a state
-   . Traversable t
-  => (HTMLInputElement -> Effect a)
-  -> GameEvent state
-  -> t QuerySelector
-  -> (t a -> state -> Effect state)
-  -> Effect (GameEvent state)
-inputEvent getValue baseEvent inputSelectors update = ado
-  changeEvent <- inputChangeEvent getValue inputSelectors update >>= case _ of
-    (x:_) -> pure x
-    _ -> throwError (error "Traversable for inputEvent was empty")
-  in { eventType: baseEvent.eventType
-     , target: baseEvent.target
-     , update: \_ state -> changeEvent.update (undefined :: Event) state
-     , useCapture: baseEvent.useCapture
-     }
-
-inputEventValue
-  :: forall t state
-   . Traversable t
-  => GameEvent state
-  -> t QuerySelector
-  -> (t String -> state -> Effect state)
-  -> Effect (GameEvent state)
-inputEventValue = inputEvent Input.value
-
-inputEventNumber
-  :: forall t state
-   . Traversable t
-  => GameEvent state
-  -> t QuerySelector
-  -> (t Number -> state -> Effect state)
-  -> Effect (GameEvent state)
-inputEventNumber = inputEvent Input.valueAsNumber
-
-inputEventOne
-  :: forall a state
-   . (HTMLInputElement -> Effect a)
-  -> GameEvent state
-  -> QuerySelector
-  -> (a -> state -> Effect state)
-  -> Effect (GameEvent state)
-inputEventOne getValue baseEvent inputSelector update =
-  inputEvent getValue baseEvent (Identity inputSelector) (unwrap >>> update)
-
-inputEventValueOne
-  :: forall state
-   . GameEvent state
-  -> QuerySelector
-  -> (String -> state -> Effect state)
-  -> Effect (GameEvent state)
-inputEventValueOne = inputEventOne Input.value
-
-inputEventNumberOne
-  :: forall state
-   . GameEvent state
-  -> QuerySelector
-  -> (Number -> state -> Effect state)
-  -> Effect (GameEvent state)
-inputEventNumberOne = inputEventOne Input.valueAsNumber
+-- TODO: instead, maybe have a function that makes an event that fires on event A, but runs event B's update

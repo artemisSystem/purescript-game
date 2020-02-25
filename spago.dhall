@@ -9,6 +9,7 @@ You can edit this file as you like.
     , "console"
     , "datetime"
     , "effect"
+    , "filterable"
     , "foldable-traversable"
     , "identity"
     , "js-timers"

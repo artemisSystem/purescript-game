@@ -10,18 +10,19 @@ module Control.Game.Web
   , AnimationFrameUpdate'(..)
 
   , GameEvent(..)
+  , hoistGameEvent
   , WebGame(..)
   ) where
 
 import Prelude
 
-import Control.Game (class ToGame, class ToUpdate, EffectUpdate, Game(..), toEffect, toUpdate, (:*), (:+))
+import Control.Game (class ToGame, class ToUpdate, Game(..), toUpdate, (:*), (:+))
 import Control.Game.Util (iterateM, iterateUntilM', newRef, nowSeconds, readRef, writeRef)
 import Data.Either (Either(..))
 import Data.Foldable (traverse_)
-import Data.List (List(..))
 import Data.Maybe (Maybe(..), fromJust, isJust)
-import Data.Newtype (class Newtype, over2)
+import Data.Newtype (class Newtype, over, over2)
+import Data.Symbol (SProxy(..))
 import Data.Time.Duration (Seconds(..))
 import Data.Tuple (Tuple(..), snd)
 import Effect (Effect)
@@ -29,6 +30,7 @@ import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Class (liftEffect)
 import Effect.Ref (Ref)
 import Partial.Unsafe (unsafePartial)
+import Record (modify)
 import Web.Event.Event (Event, EventType)
 import Web.Event.EventTarget (EventTarget, addEventListener, eventListener, removeEventListener)
 import Web.HTML (window) as W
@@ -52,7 +54,11 @@ requestAnimationFrames' effect w = iterateM
       t <- nowSeconds
       effect (over2 Seconds (-) t t0) $> t
 
-requestAnimationFramesUntil' :: forall a. (Seconds -> Effect (Maybe a)) -> Window -> Aff a
+requestAnimationFramesUntil'
+  :: forall a
+   . (Seconds -> Effect (Maybe a))
+  -> Window
+  -> Aff a
 requestAnimationFramesUntil' effect w = fixReturn $ iterateUntilM'
   do \(Tuple _ m) -> isJust m
   do \(Tuple t0 _) -> requestAnimationFrame' (step t0) w
@@ -65,14 +71,14 @@ requestAnimationFramesUntil' effect w = fixReturn $ iterateUntilM'
 
 newtype AnimationFrameUpdate' s a = AnimationFrameUpdate'
   { window :: Window
-  , update :: Seconds -> EffectUpdate s a
+  , update :: Seconds -> Ref s -> Effect (Maybe a)
   }
 
 derive instance newtypeAnimationFrameUpdate' :: Newtype (AnimationFrameUpdate' s a) _
 
 instance toUpdateAnimationFrameUpdate' :: ToUpdate s a (AnimationFrameUpdate' s a) where
   toUpdate (AnimationFrameUpdate' { window, update }) =
-    \ref -> requestAnimationFramesUntil' (update >>> (_ `toEffect` ref)) window
+    \ref -> requestAnimationFramesUntil' (update >>> (_ $ ref)) window
 
 
 -- | Returns an `Aff` that runs the given effect and resolves with its result on
@@ -95,8 +101,11 @@ requestAnimationFramesUntil :: forall a. (Seconds -> Effect (Maybe a)) -> Aff a
 requestAnimationFramesUntil effect =
   liftEffect W.window >>= requestAnimationFramesUntil' effect
 
+-- get ref every frame or potentially call unnecesscary pure and pure unit every frame?
+-- which is worse, which is preferrable?
+-- won't be getting ref every frame anyway
 newtype AnimationFrameUpdate s a =
-  AnimationFrameUpdate (Seconds -> EffectUpdate s a)
+  AnimationFrameUpdate (Seconds -> Ref s -> Effect (Maybe a))
 
 derive instance newtypeAnimationFrameUpdate :: Newtype (AnimationFrameUpdate s a) _
 
@@ -105,17 +114,18 @@ instance toUpdateAnimationFrameUpdate :: ToUpdate s a (AnimationFrameUpdate s a)
     window <- liftEffect W.window
     toUpdate (AnimationFrameUpdate' { window, update }) ref
 
-
-newtype GameEvent s a = GameEvent
+-- maybe not have this parametrized by m anyway
+-- have an effect update class, which are things that need to be convertable to (Ref s -> Effect (Maybe a))
+newtype GameEvent m s a = GameEvent
   { eventType  :: EventType
   , target     :: EventTarget
-  , update     :: Event -> Ref s -> Effect (Maybe a)
+  , update     :: Event -> Ref s -> m (Maybe a)
   , useCapture :: Boolean
   }
 
-derive instance newTypeGameEvent :: Newtype (GameEvent s a) _
+derive instance newTypeGameEvent :: Newtype (GameEvent m s a) _
 
-instance toUpdateGameEvent :: ToUpdate s a (GameEvent s a) where
+instance toUpdateGameEventEffect :: ToUpdate s a (GameEvent Effect s a) where
   toUpdate (GameEvent { eventType, target, update, useCapture }) =
     \ref -> makeAff \cb -> do
       listenerRef <- newRef Nothing
@@ -129,20 +139,25 @@ instance toUpdateGameEvent :: ToUpdate s a (GameEvent s a) where
       addEventListener eventType listener useCapture target
       pure $ effectCanceler canceler
 
+hoistGameEvent
+  :: forall m s a
+   . (m ~> Effect)
+  -> GameEvent m s a
+  -> GameEvent Effect s a
+hoistGameEvent nat = over GameEvent
+  $ modify (SProxy :: _ "update") (map <<< map $ nat)
+
 
 newtype WebGame s a = WebGame
   { init   :: Aff s
-  , frames :: Seconds -> EffectUpdate s a
-  , events :: List (GameEvent s a)
+  , frames :: Seconds -> Ref s -> Effect (Maybe a)
+  , events :: Array (GameEvent Effect s a)
   }
 
 derive instance newtypeWebGame :: Newtype (WebGame s a) _
 
 instance toGameWebGame :: ToGame s a (WebGame s a) where
   toGame (WebGame { init, frames, events }) = pure $
-    (  Game { init, update: Nil }
-    :+ do frames <#> toEffect
-            # flip
-            # map requestAnimationFramesUntil
-    :* events
-    )
+    Game { init, update: [] }
+      :+ do flip frames <#> requestAnimationFramesUntil
+      :* events
