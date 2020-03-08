@@ -11,6 +11,7 @@ You can edit this file as you like.
     , "effect"
     , "filterable"
     , "foldable-traversable"
+    , "free"
     , "functors"
     , "identity"
     , "js-timers"
