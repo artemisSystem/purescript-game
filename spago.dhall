@@ -11,6 +11,7 @@ You can edit this file as you like.
     , "effect"
     , "filterable"
     , "foldable-traversable"
+    , "functors"
     , "identity"
     , "js-timers"
     , "monad-loops"
@@ -22,8 +23,10 @@ You can edit this file as you like.
     , "psci-support"
     , "record"
     , "refs"
+    , "run"
     , "tailrec"
     , "undefined"
+    , "variant"
     , "web-html"
     ]
 , packages = ./packages.dhall

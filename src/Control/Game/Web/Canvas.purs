@@ -25,7 +25,7 @@ import Web.Event.Event (Event, EventType)
 import Web.Event.EventTarget (EventTarget)
 import Web.HTML.HTMLCanvasElement (fromElement, HTMLCanvasElement)
 
-
+-- change a bit to include canvas, and make instance of `ToEffectUpdate`
 type CanvasUpdate s a =
   { step    :: s -> Effect s
   , render  :: s -> CanvasAction
@@ -54,7 +54,7 @@ derive instance newtypeCanvasGame :: Newtype (CanvasGame s a) _
 
 instance toGameCanvasGame :: ToGame s a (CanvasGame s a) where
   toGame (CanvasGame { canvas, init, setup, frames, events }) = do
-    ctx <- liftEffect getCtx >>= case _ of
+    ctx <- getCtx >>= case _ of
       Nothing -> throwError (error "The canvas for canvasGame was not found.")
       Just ctx -> pure ctx
     toGame $ WebGame
@@ -65,7 +65,7 @@ instance toGameCanvasGame :: ToGame s a (CanvasGame s a) where
     where
       toCanvasElement :: HTMLCanvasElement -> C.CanvasElement
       toCanvasElement = unsafeCoerce
-      getCtx = do
+      getCtx = liftEffect do
         mCanv <- qSel canvas
           <#> (=<<) fromElement
           <#> map toCanvasElement
