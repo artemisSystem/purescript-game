@@ -2,40 +2,45 @@ module Control.Game.Every where
 
 import Prelude
 
-import Control.Game (class ToUpdate)
-import Control.Game.Util (durationToInt)
+import Control.Game (GameEffects, _end, GameUpdate)
+import Control.Game.Util (durationToInt, readRef, writeRef)
 import Control.Monad.Loops (untilJust)
-import Control.Monad.Rec.Class (forever)
 import Data.Either (Either(..))
-import Data.Maybe (Maybe)
-import Data.Newtype (class Newtype)
+import Data.Maybe (Maybe(..))
 import Data.Time.Duration (class Duration)
-import Effect (Effect)
+import Data.Tuple (fst)
 import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Ref (Ref)
 import Effect.Timer (clearTimeout, setTimeout)
+import Run (EFFECT, Run, runBaseEffect)
+import Run.Except (runExceptAt)
+import Run.State (runState)
 
-after :: forall d a. Duration d => d -> Effect a -> Aff a
+after :: forall d a. Duration d => d -> Run (effect :: EFFECT) a -> Aff a
 after d effect = makeAff \cb -> ado
   id <- setTimeout (durationToInt d) do
-    a <- effect
+    a <- runBaseEffect effect
     cb (Right a)
   in effectCanceler (clearTimeout id)
 
-every :: forall d. Duration d => d -> Effect Unit -> Aff Void
-every d effect = forever (after d effect)
+every
+  :: forall d s a
+   . Duration d
+  => d -> Run (GameEffects s a) Unit -> Ref s -> Aff a
+every d run stateRef = untilJust $ after d do
+  state <- readRef stateRef
+  result <- run
+    # runState state >>> map fst
+    # runExceptAt _end
+  case result of
+    Left a -> pure (Just a)
+    Right s -> writeRef s stateRef $> Nothing
 
-everyUntil :: forall d a. Duration d => d -> Effect (Maybe a) -> Aff a
-everyUntil d effect = untilJust (after d effect)
-
-
-newtype UpdateEvery t s a = UpdateEvery
-  { update   :: Ref s -> Effect (Maybe a)
-  , interval :: t
+updateEvery
+  :: forall d r s a
+   . Duration d
+  => d -> Run r Unit -> GameUpdate (GameEffects s a) r s a
+updateEvery d update =
+  { update
+  , loop: every d
   }
-
-derive instance newtypeUpdateEvery :: Newtype (UpdateEvery t s a) _
-
-instance toUpdateUpdateEvery :: Duration t => ToUpdate s a (UpdateEvery t s a) where
-  toUpdate (UpdateEvery { update, interval }) =
-    \ref -> everyUntil interval (update ref)

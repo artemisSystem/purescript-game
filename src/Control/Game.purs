@@ -60,7 +60,10 @@ mapUpdates f = hoistFree do over GameF (_ <#> modify (SProxy :: _ "update") f)
 
 -- | The most common row of game effects. Most of the functions in this
 -- | library that create `GameUpdate`s use this row.
-type GameEffects s a = (state :: STATE s, except :: EXCEPT a, effect :: EFFECT)
+type GameEffects s a = (state :: STATE s, end :: EXCEPT a, effect :: EFFECT)
+
+_end :: SProxy "end"
+_end = SProxy
 
 -- | A GameUpdate is a state update to happen every frame, and an aff to run it
 type GameUpdate ge r s a =
