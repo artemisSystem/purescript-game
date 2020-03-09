@@ -1,12 +1,8 @@
-module Control.Game.Web.EventHelpers where
+module Game.Aff.Web.EventHelpers where
 
 
 import Prelude
 
-import Control.Game
-import Control.Game.Util
-import Control.Game.Web
-import Control.Game.Web.Util
 import Control.Monad.Error.Class (throwError)
 import Data.List (List, fromFoldable, (:))
 import Data.List.Partial (head)
@@ -17,6 +13,10 @@ import Data.Traversable (class Traversable, traverse, sequence)
 import Effect (Effect)
 import Effect.Exception (error)
 import Effect.Ref (Ref)
+import Game
+import Game.Util
+import Game.Web
+import Game.Web.Util
 import Partial.Unsafe (unsafePartial)
 import Undefined (undefined)
 import Web.DOM.Element (toEventTarget)

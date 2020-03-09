@@ -1,4 +1,4 @@
-module Control.Game.Web.Util where
+module Game.Aff.Web.Util where
 
 import Prelude
 

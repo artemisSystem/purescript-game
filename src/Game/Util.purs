@@ -1,4 +1,4 @@
-module Control.Game.Util where
+module Game.Util where
 
 import Prelude
 

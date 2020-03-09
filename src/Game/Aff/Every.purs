@@ -1,14 +1,14 @@
-module Control.Game.Every where
+module Game.Aff.Every where
 
 import Prelude
 
-import Control.Game (GameEffects, GameUpdate, loopAction, loopUpdate)
-import Control.Game.Util (durationToInt)
 import Data.Either (Either(..))
 import Data.Time.Duration (class Duration)
 import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Ref (Ref)
 import Effect.Timer (clearTimeout, setTimeout)
+import Game (GameEffects, GameUpdate, loopAction, loopUpdate)
+import Game.Util (durationToInt)
 import Run (EFFECT, Run, runBaseEffect)
 
 

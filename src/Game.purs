@@ -1,23 +1,22 @@
-module Control.Game where
+module Game where
 
 import Prelude
 
-import Control.Game.Util (newRef, nowSeconds, readRef, untilRight, writeRef)
 import Control.Monad.Free (Free, foldFree, hoistFree)
 import Control.Parallel (parOneOfMap)
 import Data.Either (Either(..), either)
 import Data.Newtype (class Newtype, over, over2, un)
-import Data.Symbol (SProxy(..))
 import Data.Time.Duration (Seconds(..))
 import Data.Tuple (fst)
-import Effect.Aff (Aff, throwError, try)
-import Effect.Class (liftEffect)
+import Effect (Effect)
+import Effect.Aff (Aff, throwError, try, launchAff_)
 import Effect.Ref (Ref)
+import Game.Util (newRef, nowSeconds, readRef, untilRight, writeRef)
 import Prim.Row (class Union)
 import Record (modify)
-import Run
+import Run (AFF, EFFECT, Run, SProxy(..), expand, liftAff, liftEffect, runBaseAff')
 import Run.Except (EXCEPT, runExceptAt)
-import Run.Reader (READER, runReaderAt)
+import Run.Reader (READER, runReaderAt, askAt)
 import Run.State (STATE, runState)
 
 -- should remain with four fields: STATE for updating state, EXCEPT for
@@ -50,26 +49,11 @@ type Game ge r s = Free (GameF ge r s)
 mkRunGame
   :: forall ge l ig a
    . (Run l ~> Run ig)
-  -> (forall a. Array (Run ig a) -> Run ig a)
+  -> (forall b. Array (Run ig b) -> Run ig b)
   -> Game ge ge l a
   -> Run ig a
 mkRunGame runLooper parallelize =
   foldFree do un GameF >>> map (runUpdate >>> runLooper) >>> parallelize
-
--- | Run a game where the row of all the used effects are the same as the game
--- | updates row
-runGame :: forall ge s a. s -> Game ge ge (Looper s) a -> Run InterpretedGame a
-runGame init game = do
-  stateRef <- newRef init
-  game
-    # foldFree (\(GameF updates) -> updates
-      # parOneOfMap (\{ update, loop } -> try $ (runReaderAt _stateRef stateRef >>> runBaseAff') (loop update))
-      # (=<<) (either throwError pure))
-    # liftAff
--- TODO:
--- change runGame to :: Game ge ge s a -> Run (effect :: EFFECT, aff :: AFF) a
--- runGameAff :: Game ge ge s a -> Aff a
--- runGameEffect :: Game ge ge s a -> Effect Unit
 
 -- | Change the effects that are used in a `Game`
 mapUpdates
@@ -78,8 +62,8 @@ mapUpdates
 mapUpdates f = hoistFree do over GameF (_ <#> modify (SProxy :: _ "update") f)
 
 -- | The most common row of game effects. Most of the functions in this
--- | library that create `GameUpdate`s use this row. Each "update runner"
--- | decides how these effects are used, but they are usually used like this:
+-- | library that create `GameUpdate`s use this row. Each "looper" decides how
+-- | these effects are used, but they are usually used like this:
 -- |
 -- | - `state` is a STATE effect that gives access to the game state
 -- | - `dt` is a READER effect that gives the time since the last update in
@@ -93,13 +77,28 @@ type GameEffects s a =
   , effect :: EFFECT
   )
 
-type InterpretedGame = (effect :: EFFECT, aff :: AFF)
-
 type Looper s = (stateRef :: READER (Ref s), effect :: EFFECT, aff :: AFF)
 
 _stateRef :: SProxy "stateRef"
 _stateRef = SProxy
 
+
+runGame
+  :: forall ge s a
+   . s -> Game ge ge (Looper s) a -> Run (effect :: EFFECT, aff :: AFF) a
+runGame init game = do
+  stateRef <- newRef init
+  game # mkRunGame
+    do runReaderAt _stateRef stateRef
+    do parOneOfMap (runBaseAff' >>> try)
+         >>> (=<<) (either throwError pure)
+         >>> liftAff
+
+runGameAff :: forall ge s a. s -> Game ge ge (Looper s) a -> Aff a
+runGameAff init = runGame init >>> runBaseAff'
+
+runGameEffect :: forall ge s a. s -> Game ge ge (Looper s) a -> Effect Unit
+runGameEffect init = runGameAff init >>> launchAff_
 
 _end :: SProxy "end"
 _end = SProxy
@@ -119,18 +118,18 @@ runUpdate :: forall ge l a. GameUpdate ge ge l a -> Run l a
 runUpdate { update, loop } = loop update
 
 reduceUpdate
-  :: forall ge1 ge2 gex r s a
+  :: forall ge1 ge2 gex r l a
    . Union ge1 gex ge2
-  => GameUpdate ge2 r s a -> GameUpdate ge1 r s a
+  => GameUpdate ge2 r l a -> GameUpdate ge1 r l a
 reduceUpdate = modify (SProxy :: _ "loop") (expand >>> _)
 
 loopAction
   :: forall s a
-   . (Run (effect :: EFFECT) ~> Aff)
+   . (Run (effect :: EFFECT) ~> Run (effect :: EFFECT, aff :: AFF))
   -> Run (GameEffects s a) Unit
-  -> Ref s
-  -> Aff a
-loopAction single update stateRef = do
+  -> Run (Looper s) a
+loopAction single update = do
+  stateRef <- askAt _stateRef
   let
     step t0 = do
       t <- liftEffect nowSeconds
@@ -143,14 +142,14 @@ loopAction single update stateRef = do
         Left a -> pure (Right a)
         Right s -> writeRef s stateRef $> Left t
   untilRight
-    do \t0 -> single (step t0)
+    do \t0 -> expand $ single (step t0)
     do liftEffect nowSeconds <#> Left
 
 loopUpdate
   :: forall r s a
-   . (Run (effect :: EFFECT) ~> Aff)
+   . (Run (effect :: EFFECT) ~> Run (effect :: EFFECT, aff :: AFF))
   -> Run r Unit
-  -> GameUpdate (GameEffects s a) r s a
+  -> GameUpdate (GameEffects s a) r (Looper s) a
 loopUpdate single update =
   { update
   , loop: loopAction single

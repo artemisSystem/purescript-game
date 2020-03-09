@@ -1,12 +1,12 @@
-module Control.Game.Web where
+module Game.Web where
 
 import Prelude
 
-import Control.Game (GameEffects, GameUpdate, loopAction, loopUpdate)
 import Data.Either (Either(..))
 import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Class (liftEffect)
 import Effect.Ref (Ref)
+import Game (GameEffects, GameUpdate, loopAction, loopUpdate)
 import Run (Run, EFFECT, runBaseEffect)
 import Web.HTML (window) as W
 import Web.HTML.Window (requestAnimationFrame, cancelAnimationFrame) as W
