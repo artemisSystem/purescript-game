@@ -3,6 +3,7 @@ module Control.Game.Util where
 import Prelude
 
 import Control.Monad.Loops (iterateUntilM)
+import Data.Either (Either(..))
 import Data.Int (floor)
 import Data.Newtype (un)
 import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
@@ -43,6 +44,12 @@ nowSeconds = now <#> (unInstant >>> toDuration)
 
 iterateM :: forall m a b. Monad m => (a -> m a) -> m a -> m b
 iterateM f ma = ma >>= (f >>> iterateM f)
+
+untilRight
+  :: forall m a b. Monad m => (a -> m (Either a b)) -> m (Either a b) -> m b
+untilRight f ma = ma >>= case _ of
+  Left a -> untilRight f (f a)
+  Right b -> pure b
 
 iterateUntilM'
   :: forall m a
