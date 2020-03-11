@@ -4,17 +4,20 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Time.Duration (class Duration)
-import Effect.Aff (Aff, effectCanceler, makeAff)
-import Effect.Ref (Ref)
+import Effect.Aff (effectCanceler, makeAff)
 import Effect.Timer (clearTimeout, setTimeout)
-import Game (GameEffects, GameUpdate, loopAction, loopUpdate)
+import Game (GameUpdate)
+import Game.Aff (GameEffects, Looper, loopAction, loopUpdate)
 import Game.Util (durationToInt)
-import Run (EFFECT, Run, runBaseEffect)
+import Run (AFF, EFFECT, Run, liftAff, runBaseEffect)
 
 
 -- | After `d` has passed, run the effect and resolve an `Aff` with its result
-after :: forall d a. Duration d => d -> Run (effect :: EFFECT) a -> Aff a
-after d effect = makeAff \cb -> ado
+after
+  :: forall r d a
+   . Duration d
+  => d -> Run (effect :: EFFECT) a -> Run (effect :: EFFECT, aff :: AFF | r) a
+after d effect = liftAff $ makeAff \cb -> ado
   id <- setTimeout (durationToInt d) do
     a <- runBaseEffect effect
     cb (Right a)
@@ -23,11 +26,11 @@ after d effect = makeAff \cb -> ado
 every
   :: forall d s a
    . Duration d
-  => d -> Run (GameEffects s a) Unit -> Ref s -> Aff a
+  => d -> Run (GameEffects s a) Unit -> Run (Looper s) a
 every d = loopAction (after d)
 
 updateEvery
   :: forall d r s a
    . Duration d
-  => d -> Run r Unit -> GameUpdate (GameEffects s a) r s a
+  => d -> Run r Unit -> GameUpdate (GameEffects s a) r (Looper s) a
 updateEvery d = loopUpdate (after d)

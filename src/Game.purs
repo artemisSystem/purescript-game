@@ -3,154 +3,145 @@ module Game where
 import Prelude
 
 import Control.Monad.Free (Free, foldFree, hoistFree)
-import Control.Parallel (parOneOfMap)
-import Data.Either (Either(..), either)
 import Data.Newtype (class Newtype, over, over2, un)
-import Data.Time.Duration (Seconds(..))
-import Data.Tuple (fst)
-import Effect (Effect)
-import Effect.Aff (Aff, throwError, try, launchAff_)
-import Effect.Ref (Ref)
-import Game.Util (newRef, nowSeconds, readRef, untilRight, writeRef)
 import Prim.Row (class Union)
 import Record (modify)
-import Run (AFF, EFFECT, Run, SProxy(..), expand, liftAff, liftEffect, runBaseAff')
-import Run.Except (EXCEPT, runExceptAt)
-import Run.Reader (READER, runReaderAt, askAt)
-import Run.State (STATE, runState)
+import Run (Run, SProxy(..), expand)
+import Unsafe.Coerce
 
--- should remain with four fields: STATE for updating state, EXCEPT for
--- terminating the game, READER for reading dt, and EFFECT for running effects.
--- this allows for elegant handling of for example canvas.
--- r can be a huge row when adding them, but then before running the game,
--- they need to be reduced to ge.
+-- ge = effect, canvas
+-- r = effect, end
+-- r' = effect, canvas, end
+-- ex = effect, aff
+type GameUpdateF (ge :: # Type) (r :: # Type) (r' :: # Type) (ex :: # Type) a =
+  { update :: Run r' Unit
+  , exec   :: Run r Unit -> Run ex a
+  }
 
--- Game:
--- monoid to build up multiple state updates that run concurrently
--- monad to sequence games after eachother
+-- mge = effect
+-- ge = effect
+-- ge2 = effect, canvas
+-- r = effect, end
+-- Equivalent to a GameUpdateF ge2 r r'2 ex a
+type GameUpdateMapF
+  (mge :: # Type)
+  (ge :: # Type)
+  (ge2 :: # Type)
+  (r :: # Type)
+  (r'1 :: # Type)
+  (r'2 :: # Type)
+  (ex :: # Type)
+  a
+  = { gameUpdate :: GameUpdate mge ge ex a
+    , mapper     :: Run r'1 Unit -> Run r'2 Unit
+    }
 
--- ge is all the effects the game knows how to handle
-  -- common functions exist for working with games that have state, except, and effect
--- r is all the effects in the game
--- s is the type of the game state
--- a is the game return type
-newtype GameF ge r l a = GameF (Array (GameUpdate ge r l a))
+-- | GameUpdate is an existential type, saying that for a certain set of `mge`
+  -- | (minimum game effects), `ge` (current game effects), `ex` ("executor"
+  -- | effects), and `a` (game return type), it contains a function `exec`, which
+  -- | "runs" an `Run r Unit` in a `Run ex a`, and a computation
+  -- | `update :: Run r' Unit`. It also specifies the following relations:
+  -- |
+  -- | - `mge` is a subset of `r`, that is, every field in `mge` is also in `r`
+  -- | - The union of `ge` and `r` is `r'`
+  -- |
+  -- | This means that if `mge` and `ge` are the same, so are `r` and `r'`, and we
+  -- | can run `update` with `exec` to get out our `Run ex a`. While `mge` and
+  -- | `ge` are not the same, the only thing that can be done is to reduce `ge` to
+  -- | `mge`. The reason they would be different is that when adding `GameUpdate`s
+  -- | to a `Game`, you might want to add multiple updates which for example have
+  -- | the `CANVAS` effect (`CANVAS` would then be in `ge`, and not in `mge`).
+  -- | Then you could use a function that can reduce `ge` on the whole `Game` to
+  -- | collapse `CANVAS` into `EFFECT` by providing it a `Context2D`. That way,
+  -- | your `GameUpdate`s' `update` computations can all use the `CANVAS` effect,
+  -- | while all the `exec` functions only need to know how to handle `EFFECT`.
+data GameUpdate mge ge ex a
+  = GU
+      (  forall res
+      .  (  forall r r_ r'
+          . Union mge r_ r => Union ge r r'
+         => GameUpdateF ge r r' ex a -> res )
+      -> res )
+  | MGU
+      (  forall res
+      .  (  forall r r_ r'1 r'2 ge2
+          . Union mge r_ r => Union ge r r'1 => Union ge2 r r'2
+         => GameUpdateMapF mge ge ge2 r r'1 r'2 ex a -> res )
+      -> res )
 
-derive instance newtypeGameF :: Newtype (GameF ge r s a) _
+mkUpdate
+  :: forall mge ge r r' r_ ex a
+   . Union mge r_ r => Union ge r r'
+  => Run r' Unit -> (Run r Unit -> Run ex a) -> GameUpdate mge ge ex a
+mkUpdate update exec = GU (_ $ { update, exec })
 
-instance semigroupGameF :: Semigroup (GameF ge r s a) where
+runUpdateWith
+  :: forall mge ge r r'1 r'2 r_ ex a
+   . Union mge r_ r => Union ge r r'1 => Union mge r r'2
+  => (Run r'1 Unit -> Run r'2 Unit)
+  -> GameUpdate mge ge ex a
+  -> Run ex a
+runUpdateWith f (GU u) = u \{ update, exec } -> exec (coerce2 $ f $ coerce1 update)
+  where
+    coerce1 :: _ -> Run r'1 Unit
+    coerce1 = unsafeCoerce
+    coerce2 :: Run r'2 Unit -> _
+    coerce2 = unsafeCoerce
+runUpdateWith f (MGU u) = u \{ gameUpdate, mapper } ->
+  runUpdateWith (f <<< mapper) gameUpdate
+
+-- runUpdate :: forall ge ex a. GameUpdate ge ge ex a -> Run ex a
+-- runUpdate = runUpdateWith identity
+
+-- mapUpdate
+--   :: forall mge ge1 ge2 r r'1 r'2 r_ ex a
+--    . Union mge r_ r => Union ge1 r r'1 => Union ge2 r r'2
+--   => (Run r'1 Unit -> Run r'2 Unit)
+--   -> GameUpdate mge ge1 ex a
+--   -> GameUpdate mge ge2 ex a
+-- mapUpdate f (GameUpdate u) = u
+--   \{ update, exec } -> mkUpdate (coerce2 do f do coerce1 update) (coerce3 exec)
+--   where
+--     coerce1 :: _ -> Run r'1 Unit
+--     coerce1 = unsafeCoerce
+--     coerce2 :: forall a. Union ge2 r__ a => Run r'2 Unit -> Run a Unit
+--     coerce2 = unsafeCoerce
+--     coerce3 :: _ -> _
+--     coerce3 = unsafeCoerce
+
+
+newtype GameF mge ge ex a = GameF (Array (GameUpdate mge ge ex a))
+
+derive instance newtypeGameF :: Newtype (GameF mge ge ex a) _
+
+instance semigroupGameF :: Semigroup (GameF mge ge ex a) where
   append = over2 GameF append
 
-instance monoidGameF :: Monoid (GameF ge r s a) where
+instance monoidGameF :: Monoid (GameF mge ge ex a) where
   mempty = GameF []
 
-type Game ge r s = Free (GameF ge r s)
+type Game mge ge ex = Free (GameF mge ge ex)
 
-mkRunGame
-  :: forall ge l ig a
-   . (Run l ~> Run ig)
-  -> (forall b. Array (Run ig b) -> Run ig b)
-  -> Game ge ge l a
-  -> Run ig a
-mkRunGame runLooper parallelize =
-  foldFree do un GameF >>> map (runUpdate >>> runLooper) >>> parallelize
+-- TODO: fromUpdates :: Array (GameUpdate mge ge ex a) -> Game mge ge ex a
+
+-- mkRunGame
+--   :: forall ge ex ig a
+--    . (Run ex ~> Run ig)
+--   -> (forall b. Array (Run ig b) -> Run ig b)
+--   -> Game ge ge ex a
+--   -> Run ig a
+-- mkRunGame runExec parallelize =
+--   foldFree do un GameF >>> map (runUpdate >>> runExec) >>> parallelize
+
+-- | Map over all the `GameUpdate`s in a `Game`
+mapGame
+  :: forall mge1 mge2 ge1 ge2 l1 l2
+   . (GameUpdate mge1 ge1 l1 ~> GameUpdate mge2 ge2 l2)
+  -> (Game mge1 ge1 l1 ~> Game mge2 ge2 l2)
+mapGame f = hoistFree do over GameF (_ <#> f)
 
 -- | Change the effects that are used in a `Game`
-mapUpdates
-  :: forall r1 r2 ge s a
-   . (Run r1 Unit -> Run r2 Unit) -> Game ge r1 s a -> Game ge r2 s a
-mapUpdates f = hoistFree do over GameF (_ <#> modify (SProxy :: _ "update") f)
-
--- | The most common row of game effects. Most of the functions in this
--- | library that create `GameUpdate`s use this row. Each "looper" decides how
--- | these effects are used, but they are usually used like this:
--- |
--- | - `state` is a STATE effect that gives access to the game state
--- | - `dt` is a READER effect that gives the time since the last update in
--- | seconds
--- | - `end` is an EXCEPT effect. When an exception is thrown, the game ends
--- | - `effect` lets the update use arbitrary effects
-type GameEffects s a =
-  ( state  :: STATE s
-  , dt     :: READER Seconds
-  , end    :: EXCEPT a
-  , effect :: EFFECT
-  )
-
-type Looper s = (stateRef :: READER (Ref s), effect :: EFFECT, aff :: AFF)
-
-_stateRef :: SProxy "stateRef"
-_stateRef = SProxy
-
-
-runGame
-  :: forall ge s a
-   . s -> Game ge ge (Looper s) a -> Run (effect :: EFFECT, aff :: AFF) a
-runGame init game = do
-  stateRef <- newRef init
-  game # mkRunGame
-    do runReaderAt _stateRef stateRef
-    do parOneOfMap (runBaseAff' >>> try)
-         >>> (=<<) (either throwError pure)
-         >>> liftAff
-
-runGameAff :: forall ge s a. s -> Game ge ge (Looper s) a -> Aff a
-runGameAff init = runGame init >>> runBaseAff'
-
-runGameEffect :: forall ge s a. s -> Game ge ge (Looper s) a -> Effect Unit
-runGameEffect init = runGameAff init >>> launchAff_
-
-_end :: SProxy "end"
-_end = SProxy
-
-_dt :: SProxy "dt"
-_dt = SProxy
-
--- TODO: change desc
--- | A GameUpdate consists of a state update, and an `Aff` that controls when
--- | it's run
-type GameUpdate ge r l a =
-  { update :: Run r Unit
-  , loop   :: Run ge Unit -> Run l a
-  }
-
-runUpdate :: forall ge l a. GameUpdate ge ge l a -> Run l a
-runUpdate { update, loop } = loop update
-
-reduceUpdate
-  :: forall ge1 ge2 gex r l a
-   . Union ge1 gex ge2
-  => GameUpdate ge2 r l a -> GameUpdate ge1 r l a
-reduceUpdate = modify (SProxy :: _ "loop") (expand >>> _)
-
-loopAction
-  :: forall s a
-   . (Run (effect :: EFFECT) ~> Run (effect :: EFFECT, aff :: AFF))
-  -> Run (GameEffects s a) Unit
-  -> Run (Looper s) a
-loopAction single update = do
-  stateRef <- askAt _stateRef
-  let
-    step t0 = do
-      t <- liftEffect nowSeconds
-      state <- readRef stateRef
-      result <- update
-        # runReaderAt _dt (t `over2 Seconds (-)` t0)
-        # runState state >>> map fst
-        # runExceptAt _end
-      case result of
-        Left a -> pure (Right a)
-        Right s -> writeRef s stateRef $> Left t
-  untilRight
-    do \t0 -> expand $ single (step t0)
-    do liftEffect nowSeconds <#> Left
-
-loopUpdate
-  :: forall r s a
-   . (Run (effect :: EFFECT) ~> Run (effect :: EFFECT, aff :: AFF))
-  -> Run r Unit
-  -> GameUpdate (GameEffects s a) r (Looper s) a
-loopUpdate single update =
-  { update
-  , loop: loopAction single
-  }
+-- mapEffects
+--   :: forall ge1 ge2 mge s a
+--    . (Run ge1 Unit -> Run ge2 Unit) -> Game mge ge1 s a -> Game mge ge2 s a
+-- mapEffects = mapGame <<< ?mapUpdate

@@ -15,8 +15,8 @@ import Effect.Exception (error)
 import Effect.Ref (Ref)
 import Game
 import Game.Util
-import Game.Web
-import Game.Web.Util
+import Game.Aff.Web
+import Game.Aff.Web.Util
 import Partial.Unsafe (unsafePartial)
 import Undefined (undefined)
 import Web.DOM.Element (toEventTarget)

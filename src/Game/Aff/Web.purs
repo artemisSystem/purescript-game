@@ -1,20 +1,22 @@
-module Game.Web where
+module Game.Aff.Web where
 
 import Prelude
 
 import Data.Either (Either(..))
 import Effect.Aff (Aff, effectCanceler, makeAff)
-import Effect.Class (liftEffect)
 import Effect.Ref (Ref)
-import Game (GameEffects, GameUpdate, loopAction, loopUpdate)
-import Run (Run, EFFECT, runBaseEffect)
+import Game
+import Game.Aff
+import Run
 import Web.HTML (window) as W
 import Web.HTML.Window (requestAnimationFrame, cancelAnimationFrame) as W
 import Web.HTML.Window (Window)
 
 
-requestAnimationFrame' :: forall a. Window -> Run (effect :: EFFECT) a -> Aff a
-requestAnimationFrame' w effect = makeAff \cb -> ado
+requestAnimationFrame'
+  :: forall a
+   . Window -> Run (effect :: EFFECT) a -> Run (effect :: EFFECT, aff :: AFF) a
+requestAnimationFrame' w effect = liftAff $ makeAff \cb -> ado
   id <- w # W.requestAnimationFrame do
     a <- runBaseEffect effect
     cb (Right a)
@@ -24,43 +26,36 @@ requestAnimationFrames'
   :: forall s a
    . Window
   -> Run (GameEffects s a) Unit
-  -> Ref s
-  -> Aff a
+  -> Run (Looper s) a
 requestAnimationFrames' w = loopAction (requestAnimationFrame' w)
 
 animationFrameUpdate'
-  :: forall r s a. Window -> Run r Unit -> GameUpdate (GameEffects s a) r s a
+  :: forall r s a
+   . Window -> Run r Unit -> GameUpdate (GameEffects s a) r (Looper s) a
 animationFrameUpdate' w = loopUpdate (requestAnimationFrame' w)
 
 
--- | Returns an `Aff` that runs the given effect and resolves with its result on
--- | the next animation frame
-requestAnimationFrame :: forall a. Run (effect :: EFFECT) a -> Aff a
+requestAnimationFrame
+  :: forall a. Run (effect :: EFFECT) a -> Run (effect :: EFFECT, aff :: AFF) a
 requestAnimationFrame effect =
   liftEffect W.window >>= \w -> requestAnimationFrame' w effect
 
--- | Returns an `Aff` that runs forever unless cancelled, and calls the provided
--- | effect with the time since the last animation frame in seconds every
--- | animation frame
 requestAnimationFrames
-  :: forall s a
-   . Run (GameEffects s a) Unit
-  -> Ref s
-  -> Aff a
-requestAnimationFrames effect stateRef =
-  liftEffect W.window >>= \w -> requestAnimationFrames' w effect stateRef
+  :: forall s a. Run (GameEffects s a) Unit -> Run (Looper s) a
+requestAnimationFrames effect =
+  liftEffect W.window >>= \w -> requestAnimationFrames' w effect
 
 animationFrameUpdate
-  :: forall r s a. Run r Unit -> GameUpdate (GameEffects s a) r s a
+  :: forall r s a. Run r Unit -> GameUpdate (GameEffects s a) r (Looper s) a
 animationFrameUpdate update =
   { update
-  , loop: \run ref -> liftEffect W.window >>= \w ->
-      requestAnimationFrames' w run ref
+  , loop: \run -> liftEffect W.window >>= \w ->
+      requestAnimationFrames' w run
   }
 
--- type GameEvent r s a =
---   { eventType  :: EventType
---   , target     :: EventTarget
---   , update     :: Event -> Ref s -> m (Maybe a)
---   , useCapture :: Boolean
---   }
+type GameEvent r s a =
+  { update     :: Event -> Ref s -> m (Maybe a)
+  , eventType  :: EventType
+  , target     :: EventTarget
+  , useCapture :: Boolean
+  }
