@@ -26,6 +26,7 @@ You can edit this file as you like.
     , "refs"
     , "run"
     , "tailrec"
+    , "typelevel-prelude"
     , "undefined"
     , "variant"
     , "web-html"
