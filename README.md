@@ -4,6 +4,13 @@
 
 ### TODO: rewrite this whole thing
 
+Talk about:
+
+- the smaller `req` is, the less requirement you set for the updates you can
+  use, but `extra` needs to be a row that can be reduced to `req`
+
+OLD:
+
 This is a package for running a game loop in a browser in purescript using
 `window.requestAnimationFrame`.
 

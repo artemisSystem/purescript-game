@@ -3,11 +3,11 @@ module Game.Util where
 import Prelude
 
 import Control.Monad.Loops (iterateUntilM)
-import Data.Either (Either(..))
+import Data.DateTime.Instant (unInstant)
+import Data.Either (Either(..), either)
 import Data.Int (floor)
 import Data.Newtype (un)
 import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
-import Data.DateTime.Instant (unInstant)
 import Effect.Now (now)
 import Effect (Effect)
 import Effect.Aff (Milliseconds(..))
@@ -45,6 +45,9 @@ nowSeconds = now <#> (unInstant >>> toDuration)
 iterateM :: forall m a b. Monad m => (a -> m a) -> m a -> m b
 iterateM f ma = ma >>= (f >>> iterateM f)
 
+forever :: forall m a b. Monad m => m a -> m b
+forever ma = iterateM (\_ -> ma) ma
+
 untilRight
   :: forall m a b. Monad m => (a -> m (Either a b)) -> m (Either a b) -> m b
 untilRight f ma = ma >>= case _ of
@@ -56,3 +59,6 @@ iterateUntilM'
    . Monad m
   => (a -> Boolean) -> (a -> m a) -> m a -> m a
 iterateUntilM' p f ma = ma >>= iterateUntilM p f
+
+fromLeft :: forall a. Either a Void -> a
+fromLeft = either identity absurd
