@@ -144,7 +144,7 @@ let additions =
       , "lists"
       ]
     , repo = "https://github.com/3ddyy/purescript-canvas-action.git"
-    , version = "v1.0.2"
+    , version = "v4.0.1"
     }
   , polymorphic-vectors =
     { dependencies =

@@ -9,7 +9,6 @@ import Data.Int (floor)
 import Data.Newtype (un)
 import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
 import Effect.Now (now)
-import Effect (Effect)
 import Effect.Aff (Milliseconds(..))
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref (Ref)
@@ -39,8 +38,8 @@ modifyRef_ f ref = liftEffect (R.modify_ f ref)
 durationToInt :: forall d. Duration d => d -> Int
 durationToInt = fromDuration >>> un Milliseconds >>> floor
 
-nowSeconds :: Effect Seconds
-nowSeconds = now <#> (unInstant >>> toDuration)
+nowSeconds :: forall m. MonadEffect m => m Seconds
+nowSeconds = liftEffect $ now <#> (unInstant >>> toDuration)
 
 iterateM :: forall m a b. Monad m => (a -> m a) -> m a -> m b
 iterateM f ma = ma >>= (f >>> iterateM f)

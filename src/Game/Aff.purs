@@ -3,22 +3,36 @@ module Game.Aff where
 import Prelude
 
 import Control.Parallel (parOneOfMap)
-import Data.Either (Either(..), either)
+import Data.Either (either)
 import Data.Newtype (over2)
 import Data.Time.Duration (Seconds(..))
-import Data.Tuple (fst)
 import Effect (Effect)
 import Effect.Aff (Aff, throwError, try, launchAff_)
 import Effect.Ref (Ref)
-import Game
-import Game.Util (newRef, nowSeconds, readRef, untilRight, writeRef, forever, fromLeft)
+import Game (Game, GameUpdate, Reducer, mkRunGame, mkUpdate)
+import Game.Util (newRef, nowSeconds, readRef, iterateM, writeRef, forever, fromLeft)
+import Prim.Row (class Union)
 import Run (AFF, EFFECT, Run, SProxy(..), expand, liftAff, liftEffect, runBaseAff')
 import Run.Except (EXCEPT, runExceptAt)
 import Run.Reader (READER, runReaderAt, askAt)
-import Run.State (STATE, runState)
-import Unsafe.Coerce
+import Run.State (STATE, execState)
 
-type Req = (effect :: EFFECT)
+
+_dt :: SProxy "dt"
+_dt = SProxy
+
+_end :: SProxy "end"
+_end = SProxy
+
+_stateRef :: SProxy "stateRef"
+_stateRef = SProxy
+
+type LoopExecIn s a =
+  ( state  :: STATE s
+  , end    :: EXCEPT a
+  , dt     :: READER Seconds
+  , effect :: EFFECT
+  )
 
 type ExecOut s a =
   ( stateRef :: READER (Ref s)
@@ -33,17 +47,11 @@ type Interpreted s =
   , aff      :: AFF
   )
 
--- | `dt` isn't used anywhere in this module, but multiple `GameUpdate`s in
--- | other modules use it, so it's defined here so that each module doesn't need
--- | to define its own.
-_dt :: SProxy "dt"
-_dt = SProxy
+type Req = (effect :: EFFECT)
 
-_end :: SProxy "end"
-_end = SProxy
+type AffGameUpdate extra s a = GameUpdate extra Req (ExecOut s a)
 
-_stateRef :: SProxy "stateRef"
-_stateRef = SProxy
+type AffGame extra s a = Game extra Req (ExecOut s a)
 
 
 interpretAffGame :: forall s a. Run (ExecOut s a) Unit -> Run (Interpreted s) a
@@ -61,33 +69,56 @@ parallelizeAffGame games = do
     # (=<<) (either throwError pure)
     # liftAff
 
--- | Run a `Game` with this module's `Req` and `ExecOut` in `Run`
+-- | Run an `AffGame` in `Run`
 runGame
   :: forall extra s a
    . s
   -> Reducer extra Req
-  -> Game extra Req (ExecOut s a)
+  -> AffGame extra s a
   -> Run (effect :: EFFECT, aff :: AFF) a
 runGame init reducer game = do
   stateRef <- newRef init
   mkRunGame interpretAffGame parallelizeAffGame reducer game
     # runReaderAt _stateRef stateRef
 
--- | Run a `Game` with this module's `Req` and `ExecOut` in `Aff`
+-- | Run an `AffGame` in `Aff`
 runGameAff
   :: forall extra s a
    . s
   -> Reducer extra Req
-  -> Game extra Req (ExecOut s a)
+  -> AffGame extra s a
   -> Aff a
-runGameAff state reducer game = runBaseAff' do runGame state reducer game
+runGameAff init reducer game = runBaseAff' do runGame init reducer game
 
--- | Run a `Game` with this module's `Req` and `ExecOut` in `Effect`
+-- | Run an `AffGame` in `Effect`
 runGameEffect
   :: forall extra s a
    . s
   -> Reducer extra Req
-  -> Game extra Req (ExecOut s a)
+  -> AffGame extra s a
   -> Effect Unit
-runGameEffect state reducer game = launchAff_ do runGameAff state reducer game
+runGameEffect init reducer game = launchAff_ do runGameAff init reducer game
 
+loopUpdate
+  :: forall extra update s a
+   . Union (LoopExecIn s a) extra update
+  => Run (effect :: EFFECT, aff :: AFF) Unit
+  -> Run update Unit
+  -> AffGameUpdate extra s a
+loopUpdate wait = mkUpdate \execIn -> do
+  stateRef <- askAt _stateRef
+  let
+    step :: Seconds -> Run (ExecOut s a) Seconds
+    step prev = do
+      now <- liftEffect nowSeconds
+      state <- readRef stateRef
+      newState <- execIn
+        # runReaderAt _dt (now `over2 Seconds (-)` prev)
+        # execState state
+        # expand
+      writeRef newState stateRef
+      pure now
+  iterateM (\prev -> step prev <* expand wait) nowSeconds
+
+
+-- TODO: `FPS` type, with `Duration` instance

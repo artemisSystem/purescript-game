@@ -3,10 +3,9 @@ module Test.Main where
 import Prelude
 
 import Data.Either (Either(..))
+import Data.Foldable (oneOf)
 import Data.Maybe (Maybe(..))
-import Data.Maybe.First (First(..))
-import Data.Newtype (ala)
-import Data.Traversable (foldMap, sequence)
+import Data.Traversable (sequence)
 import Data.Tuple (snd)
 import Effect (Effect)
 import Effect.Class.Console (log)
@@ -15,9 +14,8 @@ import Prim.Row (class Union)
 import Run (EFFECT, Run, SProxy(..), interpret, match, runBaseEffect)
 import Run.Except (EXCEPT, runExceptAt, throwAt)
 import Run.Reader (READER, askAt, runReaderAt)
-import Run.State (STATE, evalState, get, modify, put)
+import Run.State (STATE, evalStateAt, _state, get, modify, put)
 import Run.Writer (WRITER, Writer(..), foldWriterAt, tell, tellAt)
-import Unsafe.Coerce (unsafeCoerce)
 
 type ExecOut a = (writer :: WRITER String, end :: EXCEPT a)
 
@@ -38,12 +36,12 @@ interpretGame execOut = execOut
 
 parallelize
   :: forall a. Array (Run Interpreted (Maybe a)) -> Run Interpreted (Maybe a)
-parallelize = sequence >>> map (ala First foldMap)
+parallelize = sequence >>> map oneOf
 
 runGame :: forall extra a
    . Reducer extra Req
   -> Game extra Req (ExecOut a)
-  -> Run (effect :: EFFECT) (Maybe a)
+  -> Run Interpreted (Maybe a)
 runGame = mkRunGame interpretGame parallelize
 
 
@@ -57,12 +55,7 @@ read5Update
   :: forall extra update a
    . Union (Read5In a) extra update
   => Run update Unit -> GameUpdate extra Req (ExecOut a)
-read5Update = mkUpdate (coerceF $ runReaderAt _five 5)
-  where
-    -- Details: https://github.com/purescript/purescript/issues/3242
-    coerceF :: (Run (Read5In a) Unit -> Run _ Unit)
-            -> (Run _ Unit -> Run (ExecOut a) Unit)
-    coerceF = unsafeCoerce
+read5Update = mkUpdate (runReaderAt _five 5)
 
 type StateIn a =
   (writer :: WRITER String, end :: EXCEPT a, state :: STATE Int)
@@ -71,12 +64,7 @@ stateUpdate
   :: forall extra update a
    . Union (StateIn a) extra update
   => Run update Unit -> GameUpdate extra Req (ExecOut a)
-stateUpdate = mkUpdate (coerceF $ evalState 26)
-  where
-    -- Details: https://github.com/purescript/purescript/issues/3242
-    coerceF :: (Run (StateIn a) Unit -> Run _ Unit)
-            -> (Run _ Unit -> Run (ExecOut a) Unit)
-    coerceF = unsafeCoerce
+stateUpdate = mkUpdate (evalStateAt _state 26)
 
 
 type Extra1 = (six :: READER Int)
