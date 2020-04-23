@@ -193,10 +193,10 @@ _mouseEvent = SProxy
 _posInTarget :: SProxy "posInTarget"
 _posInTarget = SProxy
 
--- | Assumes that the relevant `Event` is a `MouseEvent` (and `UIEvent`). Throws
--- | an error when attempting to read a value that doesn't exist on the
--- | `Event`. This function is not intended for use with events that are not
--- | `MouseEvent`s.
+-- | Assumes that the relevant `Event` is a `MouseEvent` (and `UIEvent`). The
+-- | current event target (`event.currentTarget`) must be a `HTMLElement`.
+-- | This function is not intended for use with events that do not meet these
+-- | criteria.
 reduceMouseEventRow
   :: forall s a r b
    . Run (EventExecIn s a (MouseEventRow r)) b

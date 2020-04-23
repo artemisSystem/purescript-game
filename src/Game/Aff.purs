@@ -4,8 +4,8 @@ import Prelude
 
 import Control.Parallel (parOneOfMap)
 import Data.Either (either)
-import Data.Newtype (over2)
-import Data.Time.Duration (Seconds(..))
+import Data.Newtype (class Newtype, over2)
+import Data.Time.Duration (Seconds(..), class Duration, Milliseconds(..))
 import Effect (Effect)
 import Effect.Aff (Aff, throwError, try, launchAff_)
 import Effect.Ref (Ref)
@@ -121,4 +121,19 @@ loopUpdate wait = mkUpdate \execIn -> do
   iterateM (\prev -> step prev <* expand wait) nowSeconds
 
 
--- TODO: `FPS` type, with `Duration` instance
+newtype FPS = FPS Number
+
+derive instance newtypeFPS :: Newtype FPS _
+derive newtype instance eqFPS :: Eq FPS
+derive newtype instance ordFPS :: Ord FPS
+
+instance showFPS :: Show FPS where
+  show (FPS n) = "(FPS " <> show n <> ")"
+
+instance durationFPS :: Duration FPS where
+  fromDuration (FPS n) = Milliseconds if n == 0.0
+    then 0.0
+    else 1000.0 / n
+  toDuration (Milliseconds n) = FPS if n == 0.0
+    then 0.0
+    else 1000.0 / n
