@@ -23,6 +23,7 @@ You can edit this file as you like.
     , "prelude"
     , "psci-support"
     , "record"
+    , "record-extra"
     , "refs"
     , "run"
     , "tailrec"
@@ -30,6 +31,7 @@ You can edit this file as you like.
     , "undefined"
     , "variant"
     , "web-html"
+    , "web-uievents"
     ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]

@@ -26,12 +26,10 @@ animationFrameUpdate'
   :: forall extra update s a
    . Union (LoopExecIn s a) extra update
   => Window -> Run update Unit -> AffGameUpdate extra s a
-animationFrameUpdate' w update = loopUpdate
-  do delayFrame' w
-  do coerceUpdate update
+animationFrameUpdate' w update = loopUpdate (delayFrame' w) (coerce update)
   where
-    coerceUpdate :: Run update Unit -> Run _ Unit
-    coerceUpdate = unsafeCoerce
+    coerce :: Run update Unit -> Run _ Unit
+    coerce = unsafeCoerce
 
 
 delayFrameAff :: Aff Unit
@@ -44,9 +42,9 @@ animationFrameUpdate
   :: forall extra update s a
    . Union (LoopExecIn s a) extra update
   => Run update Unit -> AffGameUpdate extra s a
-animationFrameUpdate update = loopUpdate delayFrame (coerceUpdate update)
+animationFrameUpdate update = loopUpdate delayFrame (coerce update)
   where
-    coerceUpdate :: Run update Unit -> Run _ Unit
-    coerceUpdate = unsafeCoerce
+    coerce :: Run update Unit -> Run _ Unit
+    coerce = unsafeCoerce
 
--- TODO: update that makes it try to stick to a certain fps
+ 

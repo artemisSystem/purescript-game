@@ -2,5 +2,6 @@
 , "scripts":
   { "test": "spago run -m Test.Main"
   , "example-AffGame": "spago bundle-app -m Test.AffGame.Main -t test/Test/AffGame/index.js; open test/Test/AffGame/index.html"
+  , "example-Event": "spago bundle-app -m Test.Event.Main -t test/Test/Event/index.js; open test/Test/Event/index.html"
   }
 }

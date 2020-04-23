@@ -21,8 +21,8 @@ everyUpdate
   :: forall extra update d s a
    . Duration d => Union (LoopExecIn s a) extra update
   => d -> Run update Unit -> AffGameUpdate extra s a
-everyUpdate d update = loopUpdate (delay d) (coerceUpdate update)
+everyUpdate d update = loopUpdate (delay d) (coerce update)
   where
-    coerceUpdate :: Run update Unit -> Run _ Unit
-    coerceUpdate = unsafeCoerce
+    coerce :: Run update Unit -> Run _ Unit
+    coerce = unsafeCoerce
 

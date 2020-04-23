@@ -13,7 +13,7 @@ import Prelude
 
 import Prim.Row (class Union, class Nub)
 import Run (Run)
-import Run.Anything (Anything)
+import Run.Unsafe (Anything)
 import Unsafe.Coerce (unsafeCoerce)
 
 
@@ -49,8 +49,8 @@ runUpdate reducer gameUpdate = case coerceUpdate gameUpdate of
     -- the union of `extra` and `req`. This leads to inference issues, so
     -- instead I'm using `Anything` like this, which works just fine, since it's
     -- never exposed anywhere and is just so that the `Reducer` and `GameUpdate`
-    -- can be used. Another option would have been to use the FFI to avoid the
-    -- typechecking altogether.
+    -- can be used with eachother. Another option would have been to use the FFI
+    -- to avoid the typechecking altogether.
     coerceUpdate
       :: GameUpdate extra req execOut
       -> GameUpdateF (Anything ()) (Anything ()) execOut

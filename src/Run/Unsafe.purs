@@ -9,12 +9,12 @@
 | matching on the `"💣"` field, is unsafe. It is up to you to handle everything,
 | this module just defines the types you will need.
 -}
-module Run.Anything where
+module Run.Unsafe where
 
 import Prelude
 
 import Run (FProxy)
-import Unsafe.Coerce
+import Unsafe.Coerce (unsafeCoerce)
 
 
 data Unsafe a

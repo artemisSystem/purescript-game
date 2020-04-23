@@ -4,6 +4,7 @@ import Prelude
 
 import Control.Monad.Loops (iterateUntilM)
 import Data.DateTime.Instant (unInstant)
+import Data.Maybe (Maybe, maybe)
 import Data.Either (Either(..), either)
 import Data.Int (floor)
 import Data.Newtype (un)
@@ -11,8 +12,10 @@ import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
 import Effect.Now (now)
 import Effect.Aff (Milliseconds(..))
 import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Exception (throw)
 import Effect.Ref (Ref)
 import Effect.Ref (new, read, write, modify, modify', modify_) as R
+
 
 newRef :: forall m s. MonadEffect m => s -> m (Ref s)
 newRef v = liftEffect (R.new v)
@@ -61,3 +64,6 @@ iterateUntilM' p f ma = ma >>= iterateUntilM p f
 
 fromLeft :: forall a. Either a Void -> a
 fromLeft = either identity absurd
+
+maybeThrow :: forall m a. MonadEffect m => String -> Maybe a -> m a
+maybeThrow error = maybe (liftEffect $ throw error) pure
