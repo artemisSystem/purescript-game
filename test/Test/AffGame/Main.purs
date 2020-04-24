@@ -40,4 +40,4 @@ main = do
     imageSource >>= (_ `createPattern` Repeat)
   ctx <- querySelectContext2D (QuerySelector "canvas#game")
      >>= maybe (throw "no canvas") pure
-  runGameEffect { x: 0.0, y: 0.0 } (mkReducer $ runCanvas ctx) (game pattern)
+  runGameEffect { x: 0.0, y: 0.0 } (mkReducer do runCanvas ctx) (game pattern)

@@ -3,19 +3,19 @@ module Game.Aff where
 import Prelude
 
 import Control.Parallel (parOneOfMap)
-import Data.Either (either)
+import Data.Either (either, Either(..))
 import Data.Newtype (class Newtype, over2)
-import Data.Time.Duration (Seconds(..), class Duration, Milliseconds(..))
+import Data.Time.Duration (Seconds(..), class Duration, Milliseconds(..), convertDuration)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff, throwError, try, launchAff_)
 import Effect.Ref (Ref)
 import Game (Game, GameUpdate, Reducer, mkRunGame, mkUpdate)
 import Game.Util (newRef, nowSeconds, readRef, iterateM, writeRef, forever, fromLeft)
-import Prim.Row (class Union)
 import Run (AFF, EFFECT, Run, SProxy(..), expand, liftAff, liftEffect, runBaseAff')
 import Run.Except (EXCEPT, runExceptAt)
 import Run.Reader (READER, runReaderAt, askAt)
-import Run.State (STATE, execState)
+import Run.State (STATE, runState, evalState)
 
 
 _dt :: SProxy "dt"
@@ -27,12 +27,12 @@ _end = SProxy
 _stateRef :: SProxy "stateRef"
 _stateRef = SProxy
 
-type LoopExecIn s a =
+type LoopExecIn s a r =
   ( state  :: STATE s
   , end    :: EXCEPT a
   , dt     :: READER Seconds
   , effect :: EFFECT
-  )
+  | r )
 
 type ExecOut s a =
   ( stateRef :: READER (Ref s)
@@ -90,7 +90,8 @@ runGameAff
   -> Aff a
 runGameAff init reducer game = runBaseAff' do runGame init reducer game
 
--- | Run an `AffGame` in `Effect`
+-- | Run an `AffGame` in `Effect`. Discards the result value, since it can't be
+-- | read synchronously.
 runGameEffect
   :: forall extra s a
    . s
@@ -99,26 +100,71 @@ runGameEffect
   -> Effect Unit
 runGameEffect init reducer game = launchAff_ do runGameAff init reducer game
 
+
 loopUpdate
-  :: forall extra update s a
-   . Union (LoopExecIn s a) extra update
-  => Run (effect :: EFFECT, aff :: AFF) Unit
-  -> Run update Unit
+  :: forall extra s a b
+   . Run (effect :: EFFECT, aff :: AFF) Unit
+  -> Run (LoopExecIn s a extra) b
+  -> (b -> Run (LoopExecIn s a extra) b)
   -> AffGameUpdate extra s a
-loopUpdate wait = mkUpdate \execIn -> do
-  stateRef <- askAt _stateRef
-  let
-    step :: Seconds -> Run (ExecOut s a) Seconds
-    step prev = do
-      now <- liftEffect nowSeconds
-      state <- readRef stateRef
-      newState <- execIn
-        # runReaderAt _dt (now `over2 Seconds (-)` prev)
-        # execState state
-        # expand
-      writeRef newState stateRef
-      pure now
-  iterateM (\prev -> step prev <* expand wait) nowSeconds
+loopUpdate wait = mkUpdateS \initIn updateIn -> do
+    stateRef <- askAt _stateRef
+    let
+      step :: (Tuple Seconds b) -> Run (ExecOut s a) (Tuple Seconds b)
+      step (Tuple prevTime passThrough) = do
+        now <- liftEffect nowSeconds
+        state <- readRef stateRef
+        (Tuple newState newPT) <- updateIn passThrough
+          # runReaderAt _dt (now `over2 Seconds (-)` prevTime)
+          # runState state
+          # expand
+        writeRef newState stateRef
+        pure (Tuple now newPT)
+      initIn' :: Run (ExecOut s a) b
+      initIn' = do
+        state <- readRef stateRef
+        initIn
+          # runReaderAt _dt (Seconds 0.0)
+          # evalState state
+          # expand
+    iterateM
+      (\prev -> step prev <* expand wait)
+      (Tuple <$> nowSeconds <*> initIn')
+  where
+    mkUpdateS
+      :: (        Run (LoopExecIn s a ()) b
+         -> (b -> Run (LoopExecIn s a ()) b)
+         -> Run (ExecOut s a) Unit )
+      -> Run (LoopExecIn s a extra) b
+      -> (b -> Run (LoopExecIn s a extra) b)
+      -> GameUpdate extra Req (ExecOut s a)
+    mkUpdateS = mkUpdate
+
+loopUpdate'
+  :: forall extra s a
+   . Run (effect :: EFFECT, aff :: AFF) Unit
+  -> Run (LoopExecIn s a extra) Unit
+  -> AffGameUpdate extra s a
+loopUpdate' wait update = loopUpdate wait (pure unit) (const update)
+
+matchInterval
+  :: forall extra s a d
+   . Duration d
+  => Run (effect :: EFFECT, aff :: AFF) Unit
+  -> d
+  -> Run (LoopExecIn s a extra) Unit
+  -> AffGameUpdate extra s a
+matchInterval wait duration update = loopUpdate wait (askAt _dt) \accDt' -> do
+  dt <- askAt _dt
+  let newAccDt = case accDt' <> dt, convertDuration duration of
+        Seconds accDt, Seconds frameTime
+          | accDt < frameTime       -> Left accDt
+          | frameTime <= 0.0        -> Right 0.0
+          | accDt > frameTime * 3.0 -> Right 0.0
+          | otherwise               -> Right (accDt - frameTime)
+  Seconds <$> case newAccDt of
+    Left  accDt -> pure accDt
+    Right accDt -> update $> accDt
 
 
 newtype FPS = FPS Number

@@ -50,7 +50,7 @@ import Data.Traversable (class Foldable, class Traversable, for, for_, traverse_
 import Data.Vector.Polymorphic (Vector2, (><))
 import Effect (Effect)
 import Effect.Aff (effectCanceler, makeAff)
-import Game (mkUpdate)
+import Game (mkUpdate')
 import Game.Aff (AffGameUpdate, ExecOut, _end, _stateRef)
 import Game.Aff.Web.Util (qSel)
 import Game.Util (maybeThrow, newRef, readRef, writeRef)
@@ -124,7 +124,7 @@ eventUpdate
   -> f EventTarget
   -> Run update Unit
   -> AffGameUpdate extra s a
-eventUpdate { eventType, useCapture } reduce targets = mkUpdate $
+eventUpdate { eventType, useCapture } reduce targets = mkUpdate' $
   coerce \execIn -> do
     stateRef <- askAt _stateRef
     result <- liftAff $ makeAff \cb -> do
@@ -432,10 +432,10 @@ forInputsImpl f inputs forInputsRow = f inputs \elem -> do
   value         <- liftEffect $ Input.value         elem
   valueAsNumber <- liftEffect $ Input.valueAsNumber elem
   forInputsRow
-    # runStateAt _value value
+    # runStateAt _value         value
     # runStateAt _valueAsNumber valueAsNumber
     # (=<<) do \(Tuple s a) -> liftEffect $ Input.setValueAsNumber s elem $> a
-    # (=<<) do \(Tuple s a) -> liftEffect $ Input.setValue s elem $> a
+    # (=<<) do \(Tuple s a) -> liftEffect $ Input.setValue         s elem $> a
 
 forInputs
   :: forall t a extra

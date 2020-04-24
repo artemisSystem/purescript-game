@@ -2,11 +2,9 @@ module Game.Util where
 
 import Prelude
 
-import Control.Monad.Loops (iterateUntilM)
 import Data.DateTime.Instant (unInstant)
 import Data.Maybe (Maybe, maybe)
-import Data.Either (Either(..), either)
-import Data.Int (floor)
+import Data.Either (Either, either)
 import Data.Newtype (un)
 import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
 import Effect.Now (now)
@@ -38,8 +36,8 @@ modifyRef' f ref = liftEffect (R.modify' f ref)
 modifyRef_ :: forall m s. MonadEffect m => (s -> s) -> Ref s -> m Unit
 modifyRef_ f ref = liftEffect (R.modify_ f ref)
 
-durationToInt :: forall d. Duration d => d -> Int
-durationToInt = fromDuration >>> un Milliseconds >>> floor
+durationToNumber :: forall d. Duration d => d -> Number
+durationToNumber = fromDuration >>> un Milliseconds
 
 nowSeconds :: forall m. MonadEffect m => m Seconds
 nowSeconds = liftEffect $ now <#> (unInstant >>> toDuration)
@@ -49,18 +47,6 @@ iterateM f ma = ma >>= (f >>> iterateM f)
 
 forever :: forall m a b. Monad m => m a -> m b
 forever ma = iterateM (\_ -> ma) ma
-
-untilRight
-  :: forall m a b. Monad m => (a -> m (Either a b)) -> m (Either a b) -> m b
-untilRight f ma = ma >>= case _ of
-  Left a -> untilRight f (f a)
-  Right b -> pure b
-
-iterateUntilM'
-  :: forall m a
-   . Monad m
-  => (a -> Boolean) -> (a -> m a) -> m a -> m a
-iterateUntilM' p f ma = ma >>= iterateUntilM p f
 
 fromLeft :: forall a. Either a Void -> a
 fromLeft = either identity absurd

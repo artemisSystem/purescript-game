@@ -9,7 +9,7 @@ import Data.Traversable (sequence)
 import Data.Tuple (snd)
 import Effect (Effect)
 import Effect.Class.Console (log)
-import Game (GameUpdate, Game, Reducer, mkRunGame, mkUpdate, mkReducer)
+import Game (GameUpdate, Game, Reducer, mkRunGame, mkUpdate', mkReducer)
 import Prim.Row (class Union)
 import Run (EFFECT, Run, SProxy(..), interpret, match, runBaseEffect)
 import Run.Except (EXCEPT, runExceptAt, throwAt)
@@ -55,7 +55,7 @@ read5Update
   :: forall extra update a
    . Union (Read5In a) extra update
   => Run update Unit -> GameUpdate extra Req (ExecOut a)
-read5Update = mkUpdate (runReaderAt _five 5)
+read5Update = mkUpdate' (runReaderAt _five 5)
 
 type StateIn a =
   (writer :: WRITER String, end :: EXCEPT a, state :: STATE Int)
@@ -64,7 +64,7 @@ stateUpdate
   :: forall extra update a
    . Union (StateIn a) extra update
   => Run update Unit -> GameUpdate extra Req (ExecOut a)
-stateUpdate = mkUpdate (evalStateAt _state 26)
+stateUpdate = mkUpdate' (evalStateAt _state 26)
 
 
 type Extra1 = (six :: READER Int)
@@ -126,10 +126,10 @@ game3 =
 
 main :: Effect Unit
 main = runBaseEffect do
-  result1 <- runGame (mkReducer $ runReaderAt _six 6) game1
+  result1 <- runGame (mkReducer do runReaderAt _six 6) game1
   log do "result of game 1: " <> show result1
 
-  result2 <- runGame (mkReducer $ foldWriterAt _void const "" >>> map snd) game2
+  result2 <- runGame (mkReducer do foldWriterAt _void const "" >>> map snd) game2
   log do "result of game 2: " <> show result2
 
   result3 <- runGame (mkReducer identity) game3

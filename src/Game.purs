@@ -1,6 +1,7 @@
 module Game
   ( GameUpdate
   , mkUpdate
+  , mkUpdate'
   , runUpdate
   , Reducer
   , mkReducer
@@ -17,14 +18,28 @@ import Run.Unsafe (Anything)
 import Unsafe.Coerce (unsafeCoerce)
 
 
-type GameUpdateF (update :: # Type) (execIn :: # Type) (execOut :: # Type) =
-  { update :: Run update Unit
-  , exec   :: Run execIn Unit -> Run execOut Unit
+type GameUpdateF (update :: # Type) (execIn :: # Type) (execOut :: # Type) a =
+  { init   :: Run update a
+  , update :: a -> Run update a
+  , exec   :: Run execIn a -> (a -> Run execIn a) -> Run execOut Unit
   }
 
 data GameUpdate (extra :: # Type) (req :: # Type) (execOut :: # Type)
 
 mkUpdate
+  :: forall update execIn nubExecIn extra req req_execIn execOut a
+   . Union execIn extra update
+  => Union req execIn req_execIn
+  => Nub execIn nubExecIn
+  => Nub req_execIn nubExecIn
+  => (Run execIn a -> (a -> Run execIn a) -> Run execOut Unit)
+  -> Run update a
+  -> (a -> Run update a)
+  -> GameUpdate extra req execOut
+mkUpdate exec init update = unsafeCoerce
+  ({ init, update, exec } :: GameUpdateF update execIn execOut a)
+
+mkUpdate'
   :: forall update execIn nubExecIn extra req req_execIn execOut
    . Union execIn extra update
   => Union req execIn req_execIn
@@ -33,8 +48,8 @@ mkUpdate
   => (Run execIn Unit -> Run execOut Unit)
   -> Run update Unit
   -> GameUpdate extra req execOut
-mkUpdate exec update = unsafeCoerce
-  ({ update, exec } :: GameUpdateF update execIn execOut)
+mkUpdate' exec update = mkUpdate exec' (pure unit) (const update)
+  where exec' _ f = exec (f unit)
 
 runUpdate
   :: forall extra req execOut
@@ -42,31 +57,26 @@ runUpdate
   -> GameUpdate extra req execOut
   -> Run execOut Unit
 runUpdate reducer gameUpdate = case coerceUpdate gameUpdate of
-  { update, exec } -> exec (coerceReducer reducer update)
+  { init, update, exec } -> exec (reduce init) (reduce <$> update)
   where
-    -- These uses of `Anything` aren't technically correct, but if they were to
-    -- be used correctly, I'd have to introduce another type variable that is
-    -- the union of `extra` and `req`. This leads to inference issues, so
-    -- instead I'm using `Anything` like this, which works just fine, since it's
-    -- never exposed anywhere and is just so that the `Reducer` and `GameUpdate`
-    -- can be used with eachother. Another option would have been to use the FFI
-    -- to avoid the typechecking altogether.
     coerceUpdate
       :: GameUpdate extra req execOut
-      -> GameUpdateF (Anything ()) (Anything ()) execOut
+      -> GameUpdateF (Anything ()) (Anything ()) execOut Void
     coerceUpdate = unsafeCoerce
     coerceReducer
       :: Reducer extra req
-      -> (Run (Anything ()) Unit -> Run (Anything ()) Unit)
+      -> (Run (Anything ()) Void -> Run (Anything ()) Void)
     coerceReducer = unsafeCoerce
+    reduce = coerceReducer reducer
 
 
 data Reducer (extra :: # Type) (req :: # Type)
 
+-- need to use `do`, not `$` (EscapedSkolem)
 mkReducer
   :: forall extra req extra_req
    . Union extra req extra_req
-  => (Run (Anything extra_req) Unit -> Run (Anything req) Unit)
+  => (forall a. Run (Anything extra_req) a -> Run (Anything req) a)
   -> Reducer extra req
 mkReducer = unsafeCoerce
 
