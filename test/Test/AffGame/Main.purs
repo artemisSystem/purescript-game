@@ -4,14 +4,16 @@ module Test.AffGame.Main where
 import Prelude
 
 import Data.Maybe (maybe)
-import Data.Time.Duration (Milliseconds(..))
+import Data.Time.Duration (Milliseconds(..), Seconds(..))
 import Data.Vector.Polymorphic (makeRect, (><))
 import Effect (Effect)
 import Effect.Exception (throw)
+import Effect.Class.Console (log)
 import Game (mkReducer)
-import Game.Aff (AffGame, runGameEffect)
+import Game.Aff (AffGame, FPS(..), runGameEffect)
 import Game.Aff.Every (everyUpdate)
-import Game.Aff.Web (animationFrameUpdate)
+import Game.Aff.Web (animationFrameUpdate, animationFrameMatchInterval)
+import Game.Util (nowSeconds)
 import Graphics.CanvasAction (CanvasPattern, PatternRepeat(..), QuerySelector(..), clearRectFull, createPattern, fillRect, fillRectFull, filled, imageSource, querySelectContext2D, runActionOffscreen)
 import Graphics.CanvasAction.Run (CANVAS, runCanvas)
 import Run.State (get, modify)
@@ -29,6 +31,9 @@ game pattern =
       filled pattern $ fillRect (makeRect 0.0 0.0 x y)
   , everyUpdate (Milliseconds 100.0) do
       modify \{ x, y } -> { x: x + 1.0, y: y + 1.0 }
+  , animationFrameMatchInterval (FPS 3.0) do
+      (Seconds now) <- nowSeconds
+      log ("Now: " <> show now)
   ]
 
 main :: Effect Unit
