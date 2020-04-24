@@ -35,6 +35,7 @@ module Game.Aff.Web.Event
   , change
   , load
 
+  , ForInputsRow
   , forInputs
   , forInputs_
   ) where
@@ -343,75 +344,6 @@ load
 load = eventUpdate
   { eventType: EventType "load", useCapture: false }
   identity
-
-
-type UpdateInputsRow values valueAsNumbers r =
-  ( value :: STATE (Record values)
-  , valueAsNumber :: STATE (Record valueAsNumbers)
-  , effect :: EFFECT
-  | r )
-
-_value :: SProxy "value"
-_value = SProxy
-
-_valueAsNumber :: SProxy "valueAsNumber"
-_valueAsNumber = SProxy
-
-updateInputs
-  :: forall a extra
-     inputs inputs2 values valueAsNumbers valuesE valueAsNumbersE
-     in_rl in_rl2 v_rl vN_rl vE_rl vNE_rl
-     valuesInputs valueAsNumbersInputs units unitsE
-     vI_rl vNI_rl units_rl unitsE_rl
-   . TypeEquals (RProxy inputs) (RProxy inputs2)
-  => RowToList inputs in_rl
-  => RowToList inputs2 in_rl2
-  => RowToList values v_rl
-  => RowToList valueAsNumbers vN_rl
-  => RowToList valuesE vE_rl
-  => RowToList valueAsNumbersE vNE_rl
-  => RowToList valuesInputs vI_rl
-  => RowToList valueAsNumbersInputs vNI_rl
-  => RowToList unitsE unitsE_rl
-  => RowToList units units_rl
-  => MapRecord in_rl inputs HTMLInputElement (Effect String) () valuesE
-  => SequenceRecord vE_rl valuesE () values Effect
-  => MapRecord in_rl2 inputs2 HTMLInputElement (Effect Number) () valueAsNumbersE
-  => SequenceRecord vNE_rl valueAsNumbersE () valueAsNumbers Effect
-  => ZipRecord v_rl values in_rl inputs () valuesInputs
-  => MapRecord vI_rl valuesInputs (Tuple String HTMLInputElement) (Effect Unit) () unitsE
-  => SequenceRecord unitsE_rl unitsE () units Effect
-  => ZipRecord vN_rl valueAsNumbers in_rl2 inputs2 () valueAsNumbersInputs
-  => MapRecord vNI_rl valueAsNumbersInputs (Tuple Number HTMLInputElement) (Effect Unit) () unitsE
-  => SequenceRecord unitsE_rl unitsE () units Effect
-  => Record inputs
-  -> Run (UpdateInputsRow values valueAsNumbers extra) a
-  -> Run (effect :: EFFECT | extra) a
-updateInputs inputs updateInputsRow = do
-  values' <- values
-  valueAsNumbers' <- valueAsNumbers
-  updateInputsRow
-    # runStateAt _value values'
-    # runStateAt _valueAsNumber valueAsNumbers'
-    # (=<<) do \(Tuple s a) -> setValueAsNumbers s $> a
-    # (=<<) do \(Tuple s a) -> setValues s $> a
-  where
-    inputs2 :: Record inputs2
-    inputs2 = unsafeCoerce inputs
-    values = mapRecord Input.value inputs
-      # sequenceRecord
-      # liftEffect
-    valueAsNumbers = mapRecord Input.valueAsNumber inputs2
-      # sequenceRecord
-      # liftEffect
-    setValues vs = zipRecord vs inputs
-      # mapRecord (\(Tuple v i) -> Input.setValue v i)
-      # sequenceRecord
-      # liftEffect
-    setValueAsNumbers vs = zipRecord vs inputs2
-      # mapRecord (\(Tuple v i) -> Input.setValueAsNumber v i)
-      # sequenceRecord
-      # liftEffect
 
 
 type ForInputsRow r =
