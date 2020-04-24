@@ -34,10 +34,6 @@ module Game.Aff.Web.Event
 
   , change
   , load
-
-  , ForInputsRow
-  , forInputs
-  , forInputs_
   ) where
 
 
@@ -344,43 +340,3 @@ load
 load = eventUpdate
   { eventType: EventType "load", useCapture: false }
   identity
-
-
-type ForInputsRow r =
-  ( value :: STATE String
-  , valueAsNumber :: STATE Number
-  , effect :: EFFECT
-  | r )
-
-forInputsImpl
-  :: forall extra inputs a b
-   . (  inputs
-     -> (HTMLInputElement -> Run (effect :: EFFECT | extra) a)
-     -> b )
-  -> inputs
-  -> Run (ForInputsRow extra) a
-  -> b
-forInputsImpl f inputs forInputsRow = f inputs \elem -> do
-  value         <- liftEffect $ Input.value         elem
-  valueAsNumber <- liftEffect $ Input.valueAsNumber elem
-  forInputsRow
-    # runStateAt _value         value
-    # runStateAt _valueAsNumber valueAsNumber
-    # (=<<) do \(Tuple s a) -> liftEffect $ Input.setValueAsNumber s elem $> a
-    # (=<<) do \(Tuple s a) -> liftEffect $ Input.setValue         s elem $> a
-
-forInputs
-  :: forall t a extra
-   . Traversable t
-  => t HTMLInputElement
-  -> Run (ForInputsRow extra) a
-  -> Run (effect :: EFFECT | extra) (t a)
-forInputs = forInputsImpl for
-
-forInputs_
-  :: forall f a extra
-   . Foldable f
-  => f HTMLInputElement
-  -> Run (ForInputsRow extra) a
-  -> Run (effect :: EFFECT | extra) Unit
-forInputs_ = forInputsImpl for_
