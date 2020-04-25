@@ -42,24 +42,19 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Int (round)
-import Data.Tuple (Tuple(..))
-import Data.Traversable (class Foldable, class Traversable, for, for_, traverse_)
+import Data.Traversable (class Foldable, for_, traverse_)
 import Data.Vector.Polymorphic (Vector2, (><))
-import Effect (Effect)
 import Effect.Aff (effectCanceler, makeAff)
 import Game (mkUpdate')
 import Game.Aff (AffGameUpdate, ExecOut, _end, _stateRef)
 import Game.Aff.Web.Util (qSel)
 import Game.Util (maybeThrow, newRef, readRef, writeRef)
+import Game.Util.Maybe (liftBoth)
 import Prim.Row (class Nub, class Union)
-import Record.Extra (class MapRecord, class SequenceRecord, class ZipRecord, mapRecord, sequenceRecord, zipRecord)
 import Run (EFFECT, Run, SProxy(..), liftAff, liftEffect, runBaseEffect)
-import Run.Except (EXCEPT, runExceptAt, throwAt)
+import Run.Except (EXCEPT, FAIL, runExceptAt, throwAt)
 import Run.Reader (READER, askAt, runReaderAt)
-import Run.State (STATE, execState, runStateAt)
-import Type.Data.Row (RProxy)
-import Type.Equality (class TypeEquals)
-import Type.RowList (class RowToList)
+import Run.State (STATE, execState)
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.Element (toEventTarget) as Element
 import Web.DOM.ParentNode (QuerySelector)
@@ -72,8 +67,6 @@ import Web.HTML.Window (toEventTarget) as Window
 import Web.HTML.HTMLElement (toEventTarget, getBoundingClientRect, fromEventTarget) as HTMLElement
 import Web.HTML.HTMLDocument (body)
 import Web.HTML.HTMLDocument (toEventTarget) as HTMLDocument
-import Web.HTML.HTMLInputElement (HTMLInputElement)
-import Web.HTML.HTMLInputElement (setValue, setValueAsNumber, value, valueAsNumber) as Input
 import Web.UIEvent.UIEvent (UIEvent)
 import Web.UIEvent.UIEvent as UIEvent
 import Web.UIEvent.MouseEvent (MouseEvent)
@@ -82,17 +75,23 @@ import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KeyboardEvent
 
 
-qSelEventTarget :: QuerySelector -> Effect (Maybe EventTarget)
-qSelEventTarget sel = qSel sel <#> map Element.toEventTarget
+qSelEventTarget
+  :: forall r
+   . QuerySelector
+  -> Run (effect :: EFFECT, except :: FAIL | r) EventTarget
+qSelEventTarget sel = qSel sel <#> Element.toEventTarget
 
-windowEventTarget :: Effect EventTarget
-windowEventTarget = window <#> Window.toEventTarget
+windowEventTarget :: forall r. Run (effect :: EFFECT | r) EventTarget
+windowEventTarget = liftEffect do window <#> Window.toEventTarget
 
-documentEventTarget :: Effect EventTarget
-documentEventTarget = window >>= document <#> HTMLDocument.toEventTarget
+documentEventTarget :: forall r. Run (effect :: EFFECT | r) EventTarget
+documentEventTarget = liftEffect do
+  window >>= document <#> HTMLDocument.toEventTarget
 
-bodyEventTarget :: Effect (Maybe EventTarget)
-bodyEventTarget = window >>= document >>= body <#> map HTMLElement.toEventTarget
+bodyEventTarget
+  :: forall r. Run (effect :: EFFECT, except :: FAIL | r) EventTarget
+bodyEventTarget = liftBoth do
+  window >>= document >>= body <#> map HTMLElement.toEventTarget
 
 
 type EventInfo =
