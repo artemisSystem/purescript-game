@@ -27,90 +27,102 @@ _end = SProxy
 _stateRef :: SProxy "stateRef"
 _stateRef = SProxy
 
-type LoopExecIn s a r =
+_env :: SProxy "env"
+_env = SProxy
+
+type LoopExecIn e s a r =
   ( state  :: STATE s
+  , env    :: READER e
   , end    :: EXCEPT a
   , dt     :: READER Seconds
   , effect :: EFFECT
   | r )
 
-type ExecOut s a =
+type ExecOut e s a =
   ( stateRef :: READER (Ref s)
+  , env      :: READER e
   , end      :: EXCEPT a
   , effect   :: EFFECT
   , aff      :: AFF
   )
 
-type Interpreted s =
+type Interpreted e s =
   ( stateRef :: READER (Ref s)
+  , env      :: READER e
   , effect   :: EFFECT
   , aff      :: AFF
   )
 
 type Req = (effect :: EFFECT)
 
-type AffGameUpdate extra s a = GameUpdate extra Req (ExecOut s a)
+type AffGameUpdate extra e s a = GameUpdate extra Req (ExecOut e s a)
 
-type AffGame extra s a = Game extra Req (ExecOut s a)
+type AffGame extra e s a =
+  { init    :: Run (effect :: EFFECT, aff :: AFF) (Tuple e s)
+  , updates :: Game extra Req (ExecOut e s a)
+  }
 
 
-interpretAffGame :: forall s a. Run (ExecOut s a) Unit -> Run (Interpreted s) a
+interpretAffGame
+  :: forall e s a. Run (ExecOut e s a) Unit -> Run (Interpreted e s) a
 interpretAffGame execOut = forever execOut
   # runExceptAt _end
   # map fromLeft
 
 parallelizeAffGame
-  :: forall s a. Array (Run (Interpreted s) a) -> Run (Interpreted s) a
+  :: forall e s a. Array (Run (Interpreted e s) a) -> Run (Interpreted e s) a
 parallelizeAffGame games = do
   stateRef <- askAt _stateRef
+  env <- askAt _env
   games
-    # map (runReaderAt _stateRef stateRef >>> runBaseAff')
+    # map (   runReaderAt _stateRef stateRef
+          >>> runReaderAt _env env
+          >>> runBaseAff' )
     # parOneOfMap try
     # (=<<) (either throwError pure)
     # liftAff
 
 -- | Run an `AffGame` in `Run`
 runGame
-  :: forall extra s a
-   . s
-  -> Reducer extra Req
-  -> AffGame extra s a
-  -> Run (effect :: EFFECT, aff :: AFF) a
-runGame init reducer game = do
-  stateRef <- newRef init
-  mkRunGame interpretAffGame parallelizeAffGame reducer game
+  :: forall extra r e s a
+   . Reducer extra Req
+  -> AffGame extra e s a
+  -> Run (effect :: EFFECT, aff :: AFF | r) a
+runGame reducer { init, updates } = expand do
+  (Tuple env initState) <- init
+  stateRef <- newRef initState
+  mkRunGame interpretAffGame parallelizeAffGame reducer updates
     # runReaderAt _stateRef stateRef
+    # runReaderAt _env env
 
 -- | Run an `AffGame` in `Aff`
 runGameAff
-  :: forall extra s a
-   . s
-  -> Reducer extra Req
-  -> AffGame extra s a
+  :: forall extra e s a
+   . Reducer extra Req
+  -> AffGame extra e s a
   -> Aff a
-runGameAff init reducer game = runBaseAff' do runGame init reducer game
+runGameAff reducer game = runBaseAff' do runGame reducer game
 
 -- | Run an `AffGame` in `Effect`. Discards the result value, since it can't be
 -- | read synchronously.
 runGameEffect
-  :: forall extra s a
-   . s
-  -> Reducer extra Req
-  -> AffGame extra s a
+  :: forall extra e s a
+   . Reducer extra Req
+  -> AffGame extra e s a
   -> Effect Unit
-runGameEffect init reducer game = launchAff_ do runGameAff init reducer game
+runGameEffect reducer game = launchAff_ do runGameAff reducer game
 
 
 loopUpdate
-  :: forall extra s a b
+  :: forall extra e s a b
    . Run (effect :: EFFECT, aff :: AFF) Unit
-  -> Run (LoopExecIn s a extra) b
-  -> (b -> Run (LoopExecIn s a extra) b)
-  -> AffGameUpdate extra s a
+  -> Run (LoopExecIn e s a extra) b
+  -> (b -> Run (LoopExecIn e s a extra) b)
+  -> AffGameUpdate extra e s a
 loopUpdate wait = mkUpdateS \initIn updateIn -> do
     stateRef <- askAt _stateRef
     let
-      step :: (Tuple Seconds b) -> Run (ExecOut s a) (Tuple Seconds b)
+      step :: (Tuple Seconds b) -> Run (ExecOut e s a) (Tuple Seconds b)
       step (Tuple prevTime passThrough) = do
         now <- liftEffect nowSeconds
         state <- readRef stateRef
@@ -120,7 +132,7 @@ loopUpdate wait = mkUpdateS \initIn updateIn -> do
           # expand
         writeRef newState stateRef
         pure (Tuple now newPT)
-      initIn' :: Run (ExecOut s a) b
+      initIn' :: Run (ExecOut e s a) b
       initIn' = do
         state <- readRef stateRef
         initIn
@@ -132,28 +144,28 @@ loopUpdate wait = mkUpdateS \initIn updateIn -> do
       (Tuple <$> nowSeconds <*> initIn')
   where
     mkUpdateS
-      :: (        Run (LoopExecIn s a ()) b
-         -> (b -> Run (LoopExecIn s a ()) b)
-         -> Run (ExecOut s a) Unit )
-      -> Run (LoopExecIn s a extra) b
-      -> (b -> Run (LoopExecIn s a extra) b)
-      -> GameUpdate extra Req (ExecOut s a)
+      :: (        Run (LoopExecIn e s a ()) b
+         -> (b -> Run (LoopExecIn e s a ()) b)
+         -> Run (ExecOut e s a) Unit )
+      -> Run (LoopExecIn e s a extra) b
+      -> (b -> Run (LoopExecIn e s a extra) b)
+      -> GameUpdate extra Req (ExecOut e s a)
     mkUpdateS = mkUpdate
 
 loopUpdate'
-  :: forall extra s a
+  :: forall extra e s a
    . Run (effect :: EFFECT, aff :: AFF) Unit
-  -> Run (LoopExecIn s a extra) Unit
-  -> AffGameUpdate extra s a
+  -> Run (LoopExecIn e s a extra) Unit
+  -> AffGameUpdate extra e s a
 loopUpdate' wait update = loopUpdate wait (pure unit) (const update)
 
 matchInterval
-  :: forall extra s a d
+  :: forall extra e s a d
    . Duration d
   => Run (effect :: EFFECT, aff :: AFF) Unit
   -> d
-  -> Run (LoopExecIn s a extra) Unit
-  -> AffGameUpdate extra s a
+  -> Run (LoopExecIn e s a extra) Unit
+  -> AffGameUpdate extra e s a
 matchInterval wait duration update = loopUpdate wait (askAt _dt) \accDt' -> do
   dt <- askAt _dt
   let newAccDt = case accDt' <> dt, convertDuration duration of

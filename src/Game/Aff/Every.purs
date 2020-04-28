@@ -16,8 +16,8 @@ delay :: forall d r. Duration d => d -> Run (aff :: AFF | r) Unit
 delay = liftAff <<< delayAff
 
 everyUpdate
-  :: forall extra d s a
+  :: forall extra e s a d
    . Duration d
-  => d -> Run (LoopExecIn s a extra) Unit -> AffGameUpdate extra s a
+  => d -> Run (LoopExecIn e s a extra) Unit -> AffGameUpdate extra e s a
 everyUpdate d = loopUpdate' (delay d)
 

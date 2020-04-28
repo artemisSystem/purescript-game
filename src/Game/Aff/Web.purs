@@ -22,8 +22,8 @@ delayFrame' :: forall r. Window -> Run (aff :: AFF | r) Unit
 delayFrame' = delayFrameAff' >>> liftAff
 
 animationFrameUpdate'
-  :: forall extra s a
-   . Window -> Run (LoopExecIn s a extra) Unit -> AffGameUpdate extra s a
+  :: forall extra e s a
+   . Window -> Run (LoopExecIn e s a extra) Unit -> AffGameUpdate extra e s a
 animationFrameUpdate' w update = loopUpdate' (delayFrame' w) update
 
 delayFrameAff :: Aff Unit
@@ -33,12 +33,12 @@ delayFrame :: forall r. Run (effect :: EFFECT, aff :: AFF | r) Unit
 delayFrame = liftEffect W.window >>= delayFrame'
 
 animationFrameUpdate
-  :: forall extra s a
-   . Run (LoopExecIn s a extra) Unit -> AffGameUpdate extra s a
+  :: forall extra e s a
+   . Run (LoopExecIn e s a extra) Unit -> AffGameUpdate extra e s a
 animationFrameUpdate = loopUpdate' delayFrame
 
 animationFrameMatchInterval
-  :: forall extra s a d
+  :: forall extra e s a d
    . Duration d
-  => d -> Run (LoopExecIn s a extra) Unit -> AffGameUpdate extra s a
+  => d -> Run (LoopExecIn e s a extra) Unit -> AffGameUpdate extra e s a
 animationFrameMatchInterval = matchInterval delayFrame
