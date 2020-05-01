@@ -1,5 +1,5 @@
 module Test.Event.Main where
-
+{-
 import Prelude
 
 import Data.Maybe
@@ -25,3 +25,5 @@ import Web.DOM.ParentNode
 import Web.Event.Event
 import Web.Event.EventTarget
 
+main :: Effect Unit
+main = pure unit

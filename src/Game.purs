@@ -89,6 +89,7 @@ type Game
 
 mkRunGame
   :: forall extra req execOut interpreted a
+    -- TODO: have a specified value a (current a becomes b) instead of Unit
    . (Run execOut Unit -> Run interpreted a)
   -> (Array (Run interpreted a) -> Run interpreted a)
   -> Reducer extra req

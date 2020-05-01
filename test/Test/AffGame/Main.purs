@@ -44,8 +44,9 @@ game =
         modify ((add 3.0 >< add 1.0) <*> _)
     , animationFrameMatchInterval (FPS 2.0) do
         modify ((identity >< add 12.0) <*> _)
+        vector <- get
         (Seconds now) <- nowSeconds
-        log ("Now: " <> show now)
+        log ("Now: " <> show now <> ", Pos: " <> show vector)
     ]
   }
 
