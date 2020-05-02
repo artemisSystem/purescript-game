@@ -1,6 +1,6 @@
 { "private": true
 , "scripts":
-  { "test": "spago run -m Test.Main"
+  { "test": "spago test"
   , "example-AffGame": "parcel serve --open -p 1337 test/Test/AffGame/index.html & spago build --watch"
   }
 }
