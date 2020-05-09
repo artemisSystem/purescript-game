@@ -5,6 +5,7 @@ module Game.Util.Maybe
   , liftBoth
   , liftBothF
   , runMaybe
+  , runMaybe'
   , module Exports
   ) where
 
