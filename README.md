@@ -2,7 +2,7 @@
 
 ## Documentation
 
-### TODO: rewrite this whole thing
+### TODO: Rewrite the readme
 
 Talk about:
 

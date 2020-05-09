@@ -43,6 +43,5 @@ game =
     ]
   }
 
-
 main :: Effect Unit
 main = runGameEffect (mkReducer identity) game

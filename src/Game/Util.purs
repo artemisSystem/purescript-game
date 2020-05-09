@@ -79,4 +79,4 @@ asksAt
   => SProxy s
   -> (e -> a)
   -> Run r a
-asksAt sym f = f <$> askAt sym 
+asksAt sym f = f <$> askAt sym
