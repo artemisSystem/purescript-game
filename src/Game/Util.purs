@@ -3,16 +3,23 @@ module Game.Util where
 import Prelude
 
 import Data.DateTime.Instant (unInstant)
-import Data.Maybe (Maybe, maybe)
 import Data.Either (Either, either)
+import Data.Maybe (Maybe, maybe)
 import Data.Newtype (un)
 import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
+import Data.Symbol (class IsSymbol)
+import Data.Tuple (Tuple(..))
 import Effect.Now (now)
 import Effect.Aff (Milliseconds(..))
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Exception (throw)
 import Effect.Ref (Ref)
 import Effect.Ref (new, read, write, modify, modify', modify_) as R
+import Run (Run, EFFECT, SProxy)
+import Run.State (STATE, runState)
+import Run.Reader (READER, askAt)
+import Type.Row (class Cons)
+
 
 
 newRef :: forall m s. MonadEffect m => s -> m (Ref s)
@@ -53,3 +60,23 @@ fromLeft = either identity absurd
 
 maybeThrow :: forall m a. MonadEffect m => String -> Maybe a -> m a
 maybeThrow error = maybe (liftEffect $ throw error) pure
+
+runStateWithRef
+  :: forall r s a
+   . Ref s
+  -> Run (effect :: EFFECT, state :: STATE s | r) a
+  -> Run (effect :: EFFECT | r) a
+runStateWithRef ref run = do
+  init <- readRef ref
+  (Tuple s a) <- runState init run
+  writeRef s ref
+  pure a
+
+asksAt
+  :: forall a e s r t
+   . IsSymbol s
+  => Cons s (READER e) t r
+  => SProxy s
+  -> (e -> a)
+  -> Run r a
+asksAt sym f = f <$> askAt sym 

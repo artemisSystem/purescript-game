@@ -1,4 +1,4 @@
-const Main = require("../../../output/Test.AffGame.Main");
+const Main = require("../../../output/Test.Event.Main");
 
 const green = "#6f7"
 const blue = "#67f"
@@ -12,10 +12,6 @@ function main () {
     );
 
   Main.main();
-}
-
-if (module.hot) {
-  module.hot.accept(() => location.reload());
 }
 
 main();

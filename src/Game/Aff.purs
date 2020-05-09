@@ -11,11 +11,11 @@ import Effect (Effect)
 import Effect.Aff (Aff, throwError, try, launchAff_)
 import Effect.Ref (Ref)
 import Game (Game, GameUpdate, Reducer, mkRunGame, mkUpdate)
-import Game.Util (newRef, nowSeconds, readRef, iterateM, writeRef, forever, fromLeft)
+import Game.Util (forever, fromLeft, iterateM, newRef, nowSeconds, runStateWithRef)
 import Run (AFF, EFFECT, Run, SProxy(..), expand, liftAff, liftEffect, runBaseAff')
 import Run.Except (EXCEPT, runExceptAt)
 import Run.Reader (READER, runReaderAt, askAt)
-import Run.State (STATE, runState, evalState)
+import Run.State (STATE)
 
 
 _dt :: SProxy "dt"
@@ -53,10 +53,12 @@ type Interpreted e s =
   , aff      :: AFF
   )
 
+-- TODO: Have Req include state, env and end as well?
 type Req = (effect :: EFFECT)
 
 type AffGameUpdate extra e s a = GameUpdate extra Req (ExecOut e s a)
 
+-- TODO: make init able to do more (end)
 type AffGame extra e s a =
   { init    :: Run (effect :: EFFECT, aff :: AFF) (Tuple e s)
   , updates :: Game extra Req (ExecOut e s a)
@@ -125,19 +127,16 @@ loopUpdate wait = mkUpdateS \initIn updateIn -> do
       step :: (Tuple Seconds b) -> Run (ExecOut e s a) (Tuple Seconds b)
       step (Tuple prevTime passThrough) = do
         now <- liftEffect nowSeconds
-        state <- readRef stateRef
-        (Tuple newState newPT) <- updateIn passThrough
+        newPT <- updateIn passThrough
           # runReaderAt _dt (now `over2 Seconds (-)` prevTime)
-          # runState state
+          # runStateWithRef stateRef
           # expand
-        writeRef newState stateRef
         pure (Tuple now newPT)
       initIn' :: Run (ExecOut e s a) b
       initIn' = do
-        state <- readRef stateRef
         initIn
           # runReaderAt _dt (Seconds 0.0)
-          # evalState state
+          # runStateWithRef stateRef
           # expand
     iterateM
       (\prev -> step prev <* expand wait)
@@ -159,6 +158,7 @@ loopUpdate'
   -> AffGameUpdate extra e s a
 loopUpdate' wait update = loopUpdate wait (pure unit) (const update)
 
+-- TODO: wrap `d` in `Run`
 matchInterval
   :: forall extra e s a d
    . Duration d

@@ -2,5 +2,6 @@
 , "scripts":
   { "test": "spago test"
   , "example-AffGame": "parcel serve --open -p 1337 test/Test/AffGame/index.html & spago build --watch"
+  , "example-Event": "parcel serve --open -p 1337 test/Test/Event/index.html & spago build --watch"
   }
 }

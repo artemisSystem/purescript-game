@@ -42,16 +42,17 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Int (round)
-import Data.Traversable (class Foldable, for_, traverse_)
+import Data.Traversable (for_, traverse_)
 import Data.Vector.Polymorphic (Vector2, (><))
 import Effect.Aff (effectCanceler, makeAff)
 import Game (mkUpdate')
 import Game.Aff (AffGameUpdate, ExecOut, _end, _stateRef, _env)
 import Game.Aff.Web.Util (qSel)
-import Game.Util (maybeThrow, newRef, readRef, writeRef)
+import Game.Util (maybeThrow, newRef, readRef, runStateWithRef, writeRef)
 import Game.Util.Maybe (liftBoth)
 import Prim.Row (class Nub, class Union)
-import Run (EFFECT, Run, SProxy(..), liftAff, liftEffect, runBaseEffect)
+import Run (EFFECT, Run, SProxy(..), liftAff, liftEffect, runBaseEffect, expand)
+import Run.Choose (CHOOSE, runChoose)
 import Run.Except (EXCEPT, FAIL, runExceptAt, throwAt)
 import Run.Reader (READER, askAt, runReaderAt)
 import Run.State (STATE, execState)
@@ -107,28 +108,39 @@ type EventExecIn e s a r =
   , effect :: EFFECT
   | r )
 
+type EventTargetRow e s a =
+  ( state  :: STATE s
+  , env    :: READER e
+  , end    :: EXCEPT a
+  , effect :: EFFECT
+  , choose :: CHOOSE
+  )
+
 _event :: SProxy "event"
 _event = SProxy
 
 eventUpdate
-  :: forall f r e s a extra update
-   . Foldable f
-  => Union (EventExecIn e s a r) extra update
+  :: forall r e s a extra update
+   . Union (EventExecIn e s a r) extra update
   => Nub (EventExecIn e s a                     r ) (EventExecIn e s a r)
   => Nub (EventExecIn e s a (effect :: EFFECT | r)) (EventExecIn e s a r)
   => EventInfo
   -> (Run (EventExecIn e s a r) Unit -> Run (EventExecIn e s a ()) Unit)
-  -> f EventTarget
+  -> Run (EventTargetRow e s a) EventTarget
   -> Run update Unit
   -> AffGameUpdate extra e s a
 eventUpdate { eventType, useCapture } reduce targets = mkUpdate' $
   coerce \execIn -> do
     stateRef <- askAt _stateRef
     env <- askAt _env
+    targetArray <- targets
+        # (runChoose :: Run _ _ -> Run _ (Array _))
+        # runStateWithRef stateRef
+        # expand
     result <- liftAff $ makeAff \cb -> do
       listenerRef <- newRef Nothing
       let canceler = readRef listenerRef >>= traverse_ \l ->
-            for_ targets do removeEventListener eventType l useCapture
+            for_ targetArray do removeEventListener eventType l useCapture
       listener <- eventListener \event -> do
         state <- readRef stateRef
         r <- reduce execIn
@@ -141,7 +153,7 @@ eventUpdate { eventType, useCapture } reduce targets = mkUpdate' $
           Right newState -> writeRef newState stateRef
           Left end -> canceler *> cb (Right end)
       writeRef (Just listener) listenerRef
-      for_ targets do addEventListener eventType listener useCapture
+      for_ targetArray do addEventListener eventType listener useCapture
       pure (effectCanceler canceler)
     throwAt _end result
   where
@@ -168,11 +180,10 @@ reduceUIEventRow uiEventRow = do
 
 -- | Boolean is whether to use capture
 uiEventUpdate
-  :: forall f extra e s a
-   . Foldable f
-  => EventType
+  :: forall extra e s a
+   . EventType
   -> Boolean
-  -> f EventTarget
+  -> Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (UIEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 uiEventUpdate eventType useCapture = eventUpdate
@@ -218,10 +229,9 @@ reduceMouseEventRow mouseEventRow = do
     # runReaderAt _posInTarget posInTarget
 
 mouseEventUpdate
-  :: forall f extra e s a
-   . Foldable f
-  => EventType
-  -> f EventTarget
+  :: forall extra e s a
+   . EventType
+  -> Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 mouseEventUpdate eventType = eventUpdate
@@ -229,33 +239,29 @@ mouseEventUpdate eventType = eventUpdate
   reduceMouseEventRow
 
 mousemove
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 mousemove = mouseEventUpdate (EventType "mousemove")
 
 click
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 click = mouseEventUpdate (EventType "click")
 
 mousedown
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 mousedown = mouseEventUpdate (EventType "mousedown")
 
 mouseup
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 mouseup = mouseEventUpdate (EventType "mouseup")
@@ -288,10 +294,9 @@ reduceKeyboardEventRow keyboardEventRow = do
     # runReaderAt _keyboardEvent keyboardEvent
 
 keyboardEventUpdate
-  :: forall f extra e s a
-   . Foldable f
-  => EventType
-  -> f EventTarget
+  :: forall extra e s a
+   . EventType
+  -> Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 keyboardEventUpdate eventType = eventUpdate
@@ -299,34 +304,30 @@ keyboardEventUpdate eventType = eventUpdate
   reduceKeyboardEventRow
 
 keydown
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 keydown = keyboardEventUpdate (EventType "keydown")
 
 keyup
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 keyup = keyboardEventUpdate (EventType "keyup")
 
 keypressed
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
   -> AffGameUpdate extra e s a
 keypressed = keyboardEventUpdate (EventType "keypressed")
 
 
 change
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a extra) Unit
   -> AffGameUpdate extra e s a
 change = eventUpdate
@@ -334,9 +335,8 @@ change = eventUpdate
   identity
 
 load
-  :: forall f extra e s a
-   . Foldable f
-  => f EventTarget
+  :: forall extra e s a
+   . Run (EventTargetRow e s a) EventTarget
   -> Run (EventExecIn e s a extra) Unit
   -> AffGameUpdate extra e s a
 load = eventUpdate
