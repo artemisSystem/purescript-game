@@ -59,6 +59,7 @@ type Req = (effect :: EFFECT)
 type AffGameUpdate extra e s a = GameUpdate extra Req (ExecOut e s a)
 
 -- TODO: make init able to do more (end)
+-- TODO: being able to draw to canvas in init would be nice. alternatively an "on start" update, if possible
 type AffGame extra e s a =
   { init    :: Run (effect :: EFFECT, aff :: AFF) (Tuple e s)
   , updates :: Game extra Req (ExecOut e s a)

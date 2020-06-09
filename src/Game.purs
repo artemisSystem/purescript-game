@@ -17,7 +17,8 @@ import Run (Run)
 import Run.Unsafe (Anything)
 import Unsafe.Coerce (unsafeCoerce)
 
-
+-- TODO: possibly express this in terms some of these functions (or just exec? idk) having access to the reducer.
+-- makes for much freer uses of game updates
 type GameUpdateF (update :: # Type) (execIn :: # Type) (execOut :: # Type) a =
   { init   :: Run update a
   , update :: a -> Run update a

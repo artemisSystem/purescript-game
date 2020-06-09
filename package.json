@@ -1,7 +1,7 @@
 { "private": true
 , "scripts":
   { "test": "spago test"
-  , "example-AffGame": "parcel serve --open -p 1337 test/Test/AffGame/index.html & spago build --watch"
-  , "example-Event": "parcel serve --open -p 1337 test/Test/Event/index.html & spago build --watch"
+  , "example-AffGame": "parcel serve --open -p 1337 --out-dir dev test/Test/AffGame/index.html & spago build --watch"
+  , "example-Event": "parcel serve --open -p 1337 --out-dir dev test/Test/Event/index.html & spago build --watch"
   }
 }
