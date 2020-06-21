@@ -86,7 +86,7 @@ data Reducer (extra ∷ # Type) (req ∷ # Type)
 mkReducer ∷
   ∀ extra req extra_req
   . Union extra req extra_req
-  ⇒ (∀ a. Run (Anything extra_req) a → Run (Anything req) a)
+  ⇒ (Run (Anything extra_req) ~> Run (Anything req))
   → Reducer extra req
 mkReducer = unsafeCoerce
 
