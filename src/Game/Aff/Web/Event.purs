@@ -76,269 +76,267 @@ import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KeyboardEvent
 
 
-qSelEventTarget
-  :: forall r
-   . QuerySelector
-  -> Run (effect :: EFFECT, except :: FAIL | r) EventTarget
+qSelEventTarget ∷
+  ∀ r. QuerySelector → Run (effect ∷ EFFECT, except ∷ FAIL | r) EventTarget
 qSelEventTarget sel = qSel sel <#> Element.toEventTarget
 
-windowEventTarget :: forall r. Run (effect :: EFFECT | r) EventTarget
+windowEventTarget ∷ ∀ r. Run (effect ∷ EFFECT | r) EventTarget
 windowEventTarget = liftEffect do window <#> Window.toEventTarget
 
-documentEventTarget :: forall r. Run (effect :: EFFECT | r) EventTarget
+documentEventTarget ∷ ∀ r. Run (effect ∷ EFFECT | r) EventTarget
 documentEventTarget = liftEffect do
   window >>= document <#> HTMLDocument.toEventTarget
 
-bodyEventTarget
-  :: forall r. Run (effect :: EFFECT, except :: FAIL | r) EventTarget
+bodyEventTarget ∷
+  ∀ r. Run (effect ∷ EFFECT, except ∷ FAIL | r) EventTarget
 bodyEventTarget = liftBoth do
   window >>= document >>= body <#> map HTMLElement.toEventTarget
 
 
 type EventInfo =
-  { eventType :: EventType
-  , useCapture :: Boolean
+  { eventType ∷ EventType
+  , useCapture ∷ Boolean
   }
 
 type EventExecIn e s a r =
-  ( state  :: STATE s
-  , env    :: READER e
-  , end    :: EXCEPT a
-  , event  :: READER Event
-  , effect :: EFFECT
+  ( state  ∷ STATE s
+  , env    ∷ READER e
+  , end    ∷ EXCEPT a
+  , event  ∷ READER Event
+  , effect ∷ EFFECT
   | r )
 
 type EventTargetRow e s a =
-  ( state  :: STATE s
-  , env    :: READER e
-  , end    :: EXCEPT a
-  , effect :: EFFECT
-  , choose :: CHOOSE
+  ( state  ∷ STATE s
+  , env    ∷ READER e
+  , end    ∷ EXCEPT a
+  , effect ∷ EFFECT
+  , choose ∷ CHOOSE
   )
 
-_event :: SProxy "event"
+_event ∷ SProxy "event"
 _event = SProxy
 
-eventUpdate
-  :: forall r e s a extra update
-   . Union (EventExecIn e s a r) extra update
-  => Nub (EventExecIn e s a                     r ) (EventExecIn e s a r)
-  => Nub (EventExecIn e s a (effect :: EFFECT | r)) (EventExecIn e s a r)
-  => EventInfo
-  -> (Run (EventExecIn e s a r) Unit -> Run (EventExecIn e s a ()) Unit)
-  -> Run (EventTargetRow e s a) EventTarget
-  -> Run update Unit
-  -> AffGameUpdate extra e s a
+eventUpdate ∷
+  ∀ r e s a extra update
+  . Union (EventExecIn e s a r) extra update
+  ⇒ Nub (EventExecIn e s a                    r ) (EventExecIn e s a r)
+  ⇒ Nub (EventExecIn e s a (effect ∷ EFFECT | r)) (EventExecIn e s a r)
+  ⇒ EventInfo
+  → (Run (EventExecIn e s a r) Unit → Run (EventExecIn e s a ()) Unit)
+  → Run (EventTargetRow e s a) EventTarget
+  → Run update Unit
+  → AffGameUpdate extra e s a
 eventUpdate { eventType, useCapture } reduce targets = mkUpdate' $
-  coerce \execIn -> do
-    stateRef <- askAt _stateRef
-    env <- askAt _env
-    targetArray <- targets
-        # (runChoose :: Run _ _ -> Run _ (Array _))
+  coerce \execIn → do
+    stateRef ← askAt _stateRef
+    env ← askAt _env
+    targetArray ← targets
+        # (runChoose ∷ Run _ _ → Run _ (Array _))
         # runStateWithRef stateRef
         # expand
-    result <- liftAff $ makeAff \cb -> do
-      listenerRef <- newRef Nothing
-      let canceler = readRef listenerRef >>= traverse_ \l ->
+    result ← liftAff $ makeAff \cb → do
+      listenerRef ← newRef Nothing
+      let canceler = readRef listenerRef >>= traverse_ \l →
             for_ targetArray do removeEventListener eventType l useCapture
-      listener <- eventListener \event -> do
-        state <- readRef stateRef
-        r <- reduce execIn
+      listener ← eventListener \event → do
+        state ← readRef stateRef
+        r ← reduce execIn
           # runReaderAt _event event
           # runReaderAt _env env
           # execState state
           # runExceptAt _end
           # runBaseEffect
         case r of
-          Right newState -> writeRef newState stateRef
-          Left end -> canceler *> cb (Right end)
+          Right newState → writeRef newState stateRef
+          Left end → canceler *> cb (Right end)
       writeRef (Just listener) listenerRef
       for_ targetArray do addEventListener eventType listener useCapture
       pure (effectCanceler canceler)
     throwAt _end result
   where
-    coerce :: (Run (EventExecIn e s a r) Unit -> Run (ExecOut e s a) Unit)
-           -> (Run _                     Unit -> Run (ExecOut e s a) Unit)
+    coerce ∷ (Run (EventExecIn e s a r) Unit → Run (ExecOut e s a) Unit)
+           → (Run _                     Unit → Run (ExecOut e s a) Unit)
     coerce = unsafeCoerce
 
 
-type UIEventRow r = (uiEvent :: READER UIEvent | r)
+type UIEventRow r = (uiEvent ∷ READER UIEvent | r)
 
-_uiEvent :: SProxy "uiEvent"
+_uiEvent ∷ SProxy "uiEvent"
 _uiEvent = SProxy
 
-reduceUIEventRow
-  :: forall e s a r b
-   . Run (EventExecIn e s a (UIEventRow r)) b
-  -> Run (EventExecIn e s a             r ) b
+reduceUIEventRow ∷
+  ∀ e s a r b
+  . Run (EventExecIn e s a (UIEventRow r)) b
+  → Run (EventExecIn e s a             r ) b
 reduceUIEventRow uiEventRow = do
-  event <- askAt _event
-  uiEvent <- UIEvent.fromEvent event
+  event ← askAt _event
+  uiEvent ← UIEvent.fromEvent event
     # maybeThrow "This Event is not a UIEvent"
   uiEventRow
     # runReaderAt _uiEvent uiEvent
 
 -- | Boolean is whether to use capture
-uiEventUpdate
-  :: forall extra e s a
-   . EventType
-  -> Boolean
-  -> Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (UIEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+uiEventUpdate ∷
+  ∀ extra e s a
+  . EventType
+  → Boolean
+  → Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (UIEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 uiEventUpdate eventType useCapture = eventUpdate
   { eventType, useCapture }
   reduceUIEventRow
 
 
 type MouseEventRow r =
-  ( uiEvent :: READER UIEvent
-  , mouseEvent :: READER MouseEvent
-  , posInTarget :: READER (Vector2 Int)
+  ( uiEvent     ∷ READER UIEvent
+  , mouseEvent  ∷ READER MouseEvent
+  , posInTarget ∷ READER (Vector2 Int)
   | r )
 
-_mouseEvent :: SProxy "mouseEvent"
+_mouseEvent ∷ SProxy "mouseEvent"
 _mouseEvent = SProxy
 
-_posInTarget :: SProxy "posInTarget"
+_posInTarget ∷ SProxy "posInTarget"
 _posInTarget = SProxy
 
 -- | Assumes that the relevant `Event` is a `MouseEvent` (and `UIEvent`). The
 -- | current event target (`event.currentTarget`) must be a `HTMLElement`.
 -- | This function is not intended for use with events that do not meet these
 -- | criteria.
-reduceMouseEventRow
-  :: forall e s a r b
-   . Run (EventExecIn e s a (MouseEventRow r)) b
-  -> Run (EventExecIn e s a                r ) b
+reduceMouseEventRow ∷
+  ∀ e s a r b
+  . Run (EventExecIn e s a (MouseEventRow r)) b
+  → Run (EventExecIn e s a                r ) b
 reduceMouseEventRow mouseEventRow = do
-  event <- askAt _event
-  uiEvent <- UIEvent.fromEvent event
+  event ← askAt _event
+  uiEvent ← UIEvent.fromEvent event
     # maybeThrow "This Event is not a UIEvent"
-  mouseEvent <- MouseEvent.fromEvent event
+  mouseEvent ← MouseEvent.fromEvent event
     # maybeThrow "This Event is not a MouseEvent"
-  target <- Event.currentTarget event >>= HTMLElement.fromEventTarget
+  target ← Event.currentTarget event >>= HTMLElement.fromEventTarget
     # maybeThrow "This event.currentTarget is not a HTMLElement"
-  { left, top } <- liftEffect $ HTMLElement.getBoundingClientRect target
+  { left, top } ← liftEffect $ HTMLElement.getBoundingClientRect target
   let
     clientPos = ((><) <$> MouseEvent.clientX <*> MouseEvent.clientY) mouseEvent
-    posInTarget = (\p b -> p - round b) <$> clientPos <*> (left >< top)
+    posInTarget = (\p b → p - round b) <$> clientPos <*> (left >< top)
   mouseEventRow
     # runReaderAt _uiEvent uiEvent
     # runReaderAt _mouseEvent mouseEvent
     # runReaderAt _posInTarget posInTarget
 
-mouseEventUpdate
-  :: forall extra e s a
-   . EventType
-  -> Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+mouseEventUpdate ∷
+  ∀ extra e s a
+  . EventType
+  → Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (MouseEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 mouseEventUpdate eventType = eventUpdate
   { eventType, useCapture: false }
   reduceMouseEventRow
 
-mousemove
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+mousemove ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (MouseEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 mousemove = mouseEventUpdate (EventType "mousemove")
 
-click
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+click ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (MouseEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 click = mouseEventUpdate (EventType "click")
 
-mousedown
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+mousedown ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (MouseEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 mousedown = mouseEventUpdate (EventType "mousedown")
 
-mouseup
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (MouseEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+mouseup ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (MouseEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 mouseup = mouseEventUpdate (EventType "mouseup")
 
 
 type KeyboardEventRow r =
-  ( uiEvent :: READER UIEvent
-  , keyboardEvent :: READER KeyboardEvent
+  ( uiEvent ∷ READER UIEvent
+  , keyboardEvent ∷ READER KeyboardEvent
   | r )
 
-_keyboardEvent :: SProxy "keyboardEvent"
+_keyboardEvent ∷ SProxy "keyboardEvent"
 _keyboardEvent = SProxy
 
 -- | Assumes that the relevant `Event` is a `KeyboardEvent` (and `UIEvent`).
 -- | Throws an error when attempting to read a value that doesn't exist on the
 -- | `Event`. This function is not intended for use with events that are not
 -- | `KeyboardEvent`s.
-reduceKeyboardEventRow
-  :: forall e s a r b
-   . Run (EventExecIn e s a (KeyboardEventRow r)) b
-  -> Run (EventExecIn e s a                   r ) b
+reduceKeyboardEventRow ∷
+  ∀ e s a r b
+  . Run (EventExecIn e s a (KeyboardEventRow r)) b
+  → Run (EventExecIn e s a                   r ) b
 reduceKeyboardEventRow keyboardEventRow = do
-  event <- askAt _event
-  uiEvent <- UIEvent.fromEvent event
+  event ← askAt _event
+  uiEvent ← UIEvent.fromEvent event
     # maybeThrow "This Event is not UIEvent"
-  keyboardEvent <- KeyboardEvent.fromEvent event
+  keyboardEvent ← KeyboardEvent.fromEvent event
     # maybeThrow "This Event is not KeyboardEvent"
   keyboardEventRow
     # runReaderAt _uiEvent uiEvent
     # runReaderAt _keyboardEvent keyboardEvent
 
-keyboardEventUpdate
-  :: forall extra e s a
-   . EventType
-  -> Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+keyboardEventUpdate ∷
+  ∀ extra e s a
+  . EventType
+  → Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 keyboardEventUpdate eventType = eventUpdate
   { eventType, useCapture: false }
   reduceKeyboardEventRow
 
-keydown
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+keydown ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 keydown = keyboardEventUpdate (EventType "keydown")
 
-keyup
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+keyup ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 keyup = keyboardEventUpdate (EventType "keyup")
 
-keypressed
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
-  -> AffGameUpdate extra e s a
+keypressed ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
+  → AffGameUpdate extra e s a
 keypressed = keyboardEventUpdate (EventType "keypressed")
 
 
-change
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a extra) Unit
-  -> AffGameUpdate extra e s a
+change ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a extra) Unit
+  → AffGameUpdate extra e s a
 change = eventUpdate
   { eventType: EventType "change", useCapture: false }
   identity
 
-load
-  :: forall extra e s a
-   . Run (EventTargetRow e s a) EventTarget
-  -> Run (EventExecIn e s a extra) Unit
-  -> AffGameUpdate extra e s a
+load ∷
+  ∀ extra e s a
+  . Run (EventTargetRow e s a) EventTarget
+  → Run (EventExecIn e s a extra) Unit
+  → AffGameUpdate extra e s a
 load = eventUpdate
   { eventType: EventType "load", useCapture: false }
   identity

@@ -16,20 +16,20 @@ import Web.HTML.Window (document)
 
 -- | `querySelector` without having to supply a `ParentNode`, using the
 -- | document as parent node.
-qSel
-  :: forall r
-   . QuerySelector
-  -> Run (effect :: EFFECT, except :: FAIL | r) Element
+qSel ∷
+  ∀ r
+  . QuerySelector
+  → Run (effect ∷ EFFECT, except ∷ FAIL | r) Element
 qSel sel = liftBoth do
-  doc <- window >>= document <#> toParentNode
+  doc ← window >>= document <#> toParentNode
   querySelector sel doc
 
 -- | `querySelectorAll` without having to supply a `ParentNode`, using the
 -- | document as parent node.
-qSelAll :: forall r. QuerySelector -> Run (effect :: EFFECT | r) (Array Element)
+qSelAll ∷ ∀ r. QuerySelector → Run (effect ∷ EFFECT | r) (Array Element)
 qSelAll sel = liftEffect do
-  doc <- window >>= document <#> toParentNode
+  doc ← window >>= document <#> toParentNode
   querySelectorAll sel doc >>= nodeListToElems
 
-nodeListToElems :: NodeList -> Effect (Array Element)
+nodeListToElems ∷ NodeList → Effect (Array Element)
 nodeListToElems = toArray >>> map (filterMap fromNode)

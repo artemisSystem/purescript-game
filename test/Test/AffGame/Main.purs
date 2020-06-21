@@ -19,16 +19,16 @@ import Run.State (get, modify)
 import Run.Reader (askAt)
 
 
-type Extra = (canvas :: CANVAS)
+type Extra = (canvas ∷ CANVAS)
 
 type Env = CanvasPattern
 
 type State = Vector2 Number
 
-game :: AffGame Extra Env State Unit
+game ∷ AffGame Extra Env State Unit
 game =
   { init: ado
-      pattern <- runActionOffscreen (20.0 >< 20.0) do
+      pattern ← runActionOffscreen (20.0 >< 20.0) do
         filled "#aaf" fillRectFull
         filled "#afa" $ fillRect (makeRect 0.0 10.0 10.0 10.0)
         filled "#faa" $ fillRect (makeRect 10.0 0.0 10.0 10.0)
@@ -36,23 +36,23 @@ game =
       in Tuple pattern (0.0 >< 0.0)
   , updates:
     [ animationFrameUpdate do
-        pattern <- askAt _env
+        pattern ← askAt _env
         clearRectFull
-        dimensions <- get
+        dimensions ← get
         filled pattern $ fillRect (Rect zero dimensions)
     , everyUpdate (Milliseconds 100.0) do
         modify ((add 3.0 >< add 1.0) <*> _)
     , animationFrameMatchInterval (FPS 2.0) do
         modify ((identity >< add 12.0) <*> _)
-        vector <- get
-        (Seconds now) <- nowSeconds
+        vector ← get
+        (Seconds now) ← nowSeconds
         log ("Now: " <> show now <> ", Pos: " <> show vector)
     ]
   }
 
 
-main :: Effect Unit
+main ∷ Effect Unit
 main = do
-  ctx <- querySelectContext2D (QuerySelector "canvas#game")
+  ctx ← querySelectContext2D (QuerySelector "canvas#game")
      >>= maybeThrow "no canvas"
   runGameEffect (mkReducer do runCanvas ctx) game

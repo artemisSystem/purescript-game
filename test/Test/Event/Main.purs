@@ -18,19 +18,19 @@ import Web.HTML.HTMLButtonElement (HTMLButtonElement)
 import Web.HTML.HTMLButtonElement as Button
 
 type Env =
-  { button1 :: HTMLButtonElement
-  , button2 :: HTMLButtonElement
+  { button1 ∷ HTMLButtonElement
+  , button2 ∷ HTMLButtonElement
   }
 
 type Extra = ()
 
 type State = Int
 
-game :: AffGame Extra Env State Unit
+game ∷ AffGame Extra Env State Unit
 game =
   { init: runMaybe "Buttons missing" ado
-      button1 <- qSel (QuerySelector "#button1") >>= liftMaybeF Button.fromElement
-      button2 <- qSel (QuerySelector "#button2") >>= liftMaybeF Button.fromElement
+      button1 ← qSel (QuerySelector "#button1") >>= liftMaybeF Button.fromElement
+      button2 ← qSel (QuerySelector "#button2") >>= liftMaybeF Button.fromElement
       in Tuple { button1, button2 } 0
   , updates:
     [ click
@@ -38,10 +38,10 @@ game =
              [_.button1, _.button2]
         do
           modify (_ + 1)
-          count <- get
+          count ← get
           log ("Total clicks: " <> show count)
     ]
   }
 
-main :: Effect Unit
+main ∷ Effect Unit
 main = runGameEffect (mkReducer identity) game
