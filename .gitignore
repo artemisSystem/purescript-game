@@ -10,3 +10,4 @@
 /.spago
 .cache
 dist
+dev

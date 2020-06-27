@@ -3,13 +3,12 @@ module Test.AffGame.Main where
 
 import Prelude
 
-import Data.Tuple (Tuple(..))
 import Data.Time.Duration (Milliseconds(..), Seconds(..))
 import Data.Vector.Polymorphic (Rect(..), Vector2, makeRect, (><))
 import Effect (Effect)
 import Effect.Class.Console (log)
 import Game (mkReducer)
-import Game.Aff (AffGame, FPS(..), runGameEffect, _env)
+import Game.Aff (AffGame, FPS(..), runGameEffect, _env, onStart)
 import Game.Aff.Every (everyUpdate)
 import Game.Aff.Web (animationFrameUpdate, animationFrameMatchInterval)
 import Game.Util (nowSeconds, maybeThrow)
@@ -33,16 +32,18 @@ game =
         filled "#afa" $ fillRect (makeRect 0.0 10.0 10.0 10.0)
         filled "#faa" $ fillRect (makeRect 10.0 0.0 10.0 10.0)
         imageSource >>= (_ `createPattern` Repeat)
-      in Tuple pattern (0.0 >< 0.0)
+      in { env: pattern, initState: 0.0 >< 0.0 }
   , updates:
-    [ animationFrameUpdate do
+    [ onStart do
+        log "This should print once when the game starts, and never again"
+    , animationFrameUpdate do
         pattern ← askAt _env
         clearRectFull
         dimensions ← get
         filled pattern $ fillRect (Rect zero dimensions)
     , everyUpdate (Milliseconds 100.0) do
         modify ((add 3.0 >< add 1.0) <*> _)
-    , animationFrameMatchInterval (FPS 2.0) do
+    , animationFrameMatchInterval (pure (FPS 2.0)) do
         modify ((identity >< add 12.0) <*> _)
         vector ← get
         (Seconds now) ← nowSeconds

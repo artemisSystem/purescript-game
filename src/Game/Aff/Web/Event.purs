@@ -45,18 +45,16 @@ import Data.Int (round)
 import Data.Traversable (for_, traverse_)
 import Data.Vector.Polymorphic (Vector2, (><))
 import Effect.Aff (effectCanceler, makeAff)
-import Game (mkUpdate')
-import Game.Aff (AffGameUpdate, ExecOut, _end, _stateRef, _env)
+import Game (GameUpdate(..), runReducer)
+import Game.Aff (AffGameUpdate, _end, _env, _stateRef)
 import Game.Aff.Web.Util (qSel)
 import Game.Util (maybeThrow, newRef, readRef, runStateWithRef, writeRef)
 import Game.Util.Maybe (liftBoth)
-import Prim.Row (class Nub, class Union)
 import Run (EFFECT, Run, SProxy(..), liftAff, liftEffect, runBaseEffect, expand)
 import Run.Choose (CHOOSE, runChoose)
 import Run.Except (EXCEPT, FAIL, runExceptAt, throwAt)
 import Run.Reader (READER, askAt, runReaderAt)
 import Run.State (STATE, execState)
-import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.Element (toEventTarget) as Element
 import Web.DOM.ParentNode (QuerySelector)
 import Web.Event.Event (Event, EventType(..))
@@ -118,30 +116,26 @@ _event ∷ SProxy "event"
 _event = SProxy
 
 eventUpdate ∷
-  ∀ r e s a extra update
-  . Union (EventExecIn e s a r) extra update
-  ⇒ Nub (EventExecIn e s a                    r ) (EventExecIn e s a r)
-  ⇒ Nub (EventExecIn e s a (effect ∷ EFFECT | r)) (EventExecIn e s a r)
-  ⇒ EventInfo
-  → (Run (EventExecIn e s a r) Unit → Run (EventExecIn e s a ()) Unit)
+  ∀ e s a extra
+  . EventInfo
   → Run (EventTargetRow e s a) EventTarget
-  → Run update Unit
+  → Run (EventExecIn e s a extra) Unit
   → AffGameUpdate extra e s a
-eventUpdate { eventType, useCapture } reduce targets = mkUpdate' $
-  coerce \execIn → do
+eventUpdate { eventType, useCapture } targets update =
+  GameUpdate \reducer → do
     stateRef ← askAt _stateRef
     env ← askAt _env
     targetArray ← targets
-        # (runChoose ∷ Run _ _ → Run _ (Array _))
-        # runStateWithRef stateRef
-        # expand
+      # (runChoose ∷ Run _ _ → Run _ (Array _))
+      # runStateWithRef stateRef
+      # expand
     result ← liftAff $ makeAff \cb → do
       listenerRef ← newRef Nothing
       let canceler = readRef listenerRef >>= traverse_ \l →
             for_ targetArray do removeEventListener eventType l useCapture
       listener ← eventListener \event → do
         state ← readRef stateRef
-        r ← reduce execIn
+        r ← (runReducer reducer update ∷ Run (EventExecIn e s a ()) Unit)
           # runReaderAt _event event
           # runReaderAt _env env
           # execState state
@@ -154,10 +148,6 @@ eventUpdate { eventType, useCapture } reduce targets = mkUpdate' $
       for_ targetArray do addEventListener eventType listener useCapture
       pure (effectCanceler canceler)
     throwAt _end result
-  where
-    coerce ∷ (Run (EventExecIn e s a r) Unit → Run (ExecOut e s a) Unit)
-           → (Run _                     Unit → Run (ExecOut e s a) Unit)
-    coerce = unsafeCoerce
 
 
 type UIEventRow r = (uiEvent ∷ READER UIEvent | r)
@@ -166,9 +156,9 @@ _uiEvent ∷ SProxy "uiEvent"
 _uiEvent = SProxy
 
 reduceUIEventRow ∷
-  ∀ e s a r b
-  . Run (EventExecIn e s a (UIEventRow r)) b
-  → Run (EventExecIn e s a             r ) b
+  ∀ a r
+  . Run (UIEventRow (event ∷ READER Event, effect ∷ EFFECT | r)) a
+  → Run             (event ∷ READER Event, effect ∷ EFFECT | r)  a
 reduceUIEventRow uiEventRow = do
   event ← askAt _event
   uiEvent ← UIEvent.fromEvent event
@@ -184,9 +174,10 @@ uiEventUpdate ∷
   → Run (EventTargetRow e s a) EventTarget
   → Run (EventExecIn e s a (UIEventRow extra)) Unit
   → AffGameUpdate extra e s a
-uiEventUpdate eventType useCapture = eventUpdate
+uiEventUpdate eventType useCapture targets update = eventUpdate
   { eventType, useCapture }
-  reduceUIEventRow
+  targets
+  (reduceUIEventRow update)
 
 
 type MouseEventRow r =
@@ -206,9 +197,9 @@ _posInTarget = SProxy
 -- | This function is not intended for use with events that do not meet these
 -- | criteria.
 reduceMouseEventRow ∷
-  ∀ e s a r b
-  . Run (EventExecIn e s a (MouseEventRow r)) b
-  → Run (EventExecIn e s a                r ) b
+  ∀ a r
+  . Run (MouseEventRow (event ∷ READER Event, effect ∷ EFFECT | r)) a
+  → Run                (event ∷ READER Event, effect ∷ EFFECT | r)  a
 reduceMouseEventRow mouseEventRow = do
   event ← askAt _event
   uiEvent ← UIEvent.fromEvent event
@@ -232,9 +223,10 @@ mouseEventUpdate ∷
   → Run (EventTargetRow e s a) EventTarget
   → Run (EventExecIn e s a (MouseEventRow extra)) Unit
   → AffGameUpdate extra e s a
-mouseEventUpdate eventType = eventUpdate
+mouseEventUpdate eventType targets update = eventUpdate
   { eventType, useCapture: false }
-  reduceMouseEventRow
+  targets
+  (reduceMouseEventRow update)
 
 mousemove ∷
   ∀ extra e s a
@@ -278,9 +270,9 @@ _keyboardEvent = SProxy
 -- | `Event`. This function is not intended for use with events that are not
 -- | `KeyboardEvent`s.
 reduceKeyboardEventRow ∷
-  ∀ e s a r b
-  . Run (EventExecIn e s a (KeyboardEventRow r)) b
-  → Run (EventExecIn e s a                   r ) b
+  ∀ a r
+  . Run (KeyboardEventRow (event ∷ READER Event, effect ∷ EFFECT | r)) a
+  → Run                   (event ∷ READER Event, effect ∷ EFFECT | r)  a
 reduceKeyboardEventRow keyboardEventRow = do
   event ← askAt _event
   uiEvent ← UIEvent.fromEvent event
@@ -297,9 +289,10 @@ keyboardEventUpdate ∷
   → Run (EventTargetRow e s a) EventTarget
   → Run (EventExecIn e s a (KeyboardEventRow extra)) Unit
   → AffGameUpdate extra e s a
-keyboardEventUpdate eventType = eventUpdate
+keyboardEventUpdate eventType targets update = eventUpdate
   { eventType, useCapture: false }
-  reduceKeyboardEventRow
+  targets
+  (reduceKeyboardEventRow update)
 
 keydown ∷
   ∀ extra e s a
@@ -328,15 +321,11 @@ change ∷
   . Run (EventTargetRow e s a) EventTarget
   → Run (EventExecIn e s a extra) Unit
   → AffGameUpdate extra e s a
-change = eventUpdate
-  { eventType: EventType "change", useCapture: false }
-  identity
+change = eventUpdate { eventType: EventType "change", useCapture: false }
 
 load ∷
   ∀ extra e s a
   . Run (EventTargetRow e s a) EventTarget
   → Run (EventExecIn e s a extra) Unit
   → AffGameUpdate extra e s a
-load = eventUpdate
-  { eventType: EventType "load", useCapture: false }
-  identity
+load = eventUpdate { eventType: EventType "load", useCapture: false }

@@ -26,6 +26,7 @@ animationFrameUpdate' ∷
   . Window → Run (LoopExecIn e s a extra) Unit → AffGameUpdate extra e s a
 animationFrameUpdate' w update = loopUpdate' (delayFrame' w) update
 
+
 delayFrameAff ∷ Aff Unit
 delayFrameAff = liftEffect W.window >>= delayFrameAff'
 
@@ -40,5 +41,7 @@ animationFrameUpdate = loopUpdate' delayFrame
 animationFrameMatchInterval ∷
   ∀ extra e s a d
   . Duration d
-  ⇒ d → Run (LoopExecIn e s a extra) Unit → AffGameUpdate extra e s a
+  ⇒ Run (LoopExecIn e s a extra) d
+  → Run (LoopExecIn e s a extra) Unit
+  → AffGameUpdate extra e s a
 animationFrameMatchInterval = matchInterval delayFrame
