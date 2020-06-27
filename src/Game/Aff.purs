@@ -29,7 +29,7 @@ _stateRef = SProxy
 _env ∷ SProxy "env"
 _env = SProxy
 
--- | The execIn effects that is used for the `onStart` update
+-- | The execIn effects that are used for the `onStart` update
 type OnStartExecIn e s a r =
   ( state  ∷ STATE s
   , env    ∷ READER e
