@@ -6,11 +6,10 @@ import Control.Parallel (parOneOfMap)
 import Data.Either (either, Either(..))
 import Data.Newtype (class Newtype, over2)
 import Data.Time.Duration (Seconds(..), class Duration, Milliseconds(..), convertDuration)
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Aff (Aff, throwError, try, launchAff_)
+import Effect.Aff (Aff, throwError, try, launchAff_, never)
 import Effect.Ref (Ref)
-import Game (Game, GameUpdate, Reducer, mkRunGame, mkUpdate)
+import Game (GameUpdate(..), Reducer, mkRunGame, runReducer)
 import Game.Util (forever, fromLeft, iterateM, newRef, nowSeconds, runStateWithRef)
 import Run (AFF, EFFECT, Run, SProxy(..), expand, liftAff, liftEffect, runBaseAff')
 import Run.Except (EXCEPT, runExceptAt)
@@ -30,6 +29,15 @@ _stateRef = SProxy
 _env ∷ SProxy "env"
 _env = SProxy
 
+-- | The execIn effects that is used for the `onStart` update
+type OnStartExecIn e s a r =
+  ( state  ∷ STATE s
+  , env    ∷ READER e
+  , end    ∷ EXCEPT a
+  , effect ∷ EFFECT
+  | r )
+
+-- | The execIn effects that are used for most loop updates
 type LoopExecIn e s a r =
   ( state  ∷ STATE s
   , env    ∷ READER e
@@ -38,6 +46,7 @@ type LoopExecIn e s a r =
   , effect ∷ EFFECT
   | r )
 
+-- | The execOut effects for AffGame
 type ExecOut e s a =
   ( stateRef ∷ READER (Ref s)
   , env      ∷ READER e
@@ -46,6 +55,7 @@ type ExecOut e s a =
   , aff      ∷ AFF
   )
 
+-- | The effects in an interpreted AffGame
 type Interpreted e s =
   ( stateRef ∷ READER (Ref s)
   , env      ∷ READER e
@@ -53,17 +63,21 @@ type Interpreted e s =
   , aff      ∷ AFF
   )
 
--- TODO: Have Req include state, env and end as well? yes, this should be standard.
--- idk about end though
-type Req = (effect ∷ EFFECT)
+-- | These effects are required to be supported by every AffGameUpdate. Reducers
+-- | for AffGame can interpret the extra effects in terms of any of these
+type Req e s a =
+  ( effect ∷ EFFECT
+  , state  ∷ STATE s
+  , env    ∷ READER e
+  , end    ∷ EXCEPT a
+  )
 
-type AffGameUpdate extra e s a = GameUpdate extra Req (ExecOut e s a)
+type AffGameUpdate extra e s a =
+  GameUpdate extra (Req e s a) (ExecOut e s a) Unit
 
--- TODO: make init able to do more (end)
--- TODO: being able to draw to canvas in init would be nice. an "on start" update could do this
 type AffGame extra e s a =
-  { init    ∷ Run (effect ∷ EFFECT, aff ∷ AFF) (Tuple e s)
-  , updates ∷ Game extra Req (ExecOut e s a)
+  { init    ∷ Run (effect ∷ EFFECT, aff ∷ AFF) { env :: e, initState :: s }
+  , updates ∷ Array (AffGameUpdate extra e s a)
   }
 
 
@@ -87,11 +101,12 @@ parallelizeAffGame games = do
 
 -- | Run an `AffGame` in `Run`
 runGame ∷
-  ∀ extra r e s a. Reducer extra Req
+  ∀ extra r e s a
+  . Reducer extra (Req e s a)
   → AffGame extra e s a
   → Run (effect ∷ EFFECT, aff ∷ AFF | r) a
 runGame reducer { init, updates } = expand do
-  (Tuple env initState) ← init
+  { env, initState } ← init
   stateRef ← newRef initState
   mkRunGame interpretAffGame parallelizeAffGame reducer updates
     # runReaderAt _stateRef stateRef
@@ -100,7 +115,7 @@ runGame reducer { init, updates } = expand do
 -- | Run an `AffGame` in `Aff`
 runGameAff ∷
   ∀ extra e s a
-  . Reducer extra Req
+  . Reducer extra (Req e s a)
   → AffGame extra e s a
   → Aff a
 runGameAff reducer game = runBaseAff' do runGame reducer game
@@ -109,11 +124,22 @@ runGameAff reducer game = runBaseAff' do runGame reducer game
 -- | read synchronously.
 runGameEffect ∷
   ∀ extra e s a
-  . Reducer extra Req
+  . Reducer extra (Req e s a)
   → AffGame extra e s a
   → Effect Unit
 runGameEffect reducer game = launchAff_ do runGameAff reducer game
 
+
+onStart ∷
+  ∀ extra e s a
+  . Run (OnStartExecIn e s a extra) Unit
+  → AffGameUpdate extra e s a
+onStart effect = GameUpdate \reducer → do
+  stateRef ← askAt _stateRef
+  (runReducer reducer effect ∷ Run (OnStartExecIn e s a ()) Unit)
+    # runStateWithRef stateRef
+    # expand
+  liftAff never
 
 loopUpdate ∷
   ∀ extra e s a b
@@ -121,54 +147,43 @@ loopUpdate ∷
   → Run (LoopExecIn e s a extra) b
   → (b → Run (LoopExecIn e s a extra) b)
   → AffGameUpdate extra e s a
-loopUpdate wait = mkUpdateS \initIn updateIn → do
-    stateRef ← askAt _stateRef
-    let
-      step ∷ (Tuple Seconds b) → Run (ExecOut e s a) (Tuple Seconds b)
-      step (Tuple prevTime passThrough) = do
-        now ← liftEffect nowSeconds
-        newPT ← updateIn passThrough
-          # runReaderAt _dt (now `over2 Seconds (-)` prevTime)
+loopUpdate wait init loop = GameUpdate \reducer → do
+  stateRef ← askAt _stateRef
+  let
+    init' = (runReducer reducer init ∷ Run (LoopExecIn e s a ()) b)
+      # runReaderAt _dt (Seconds 0.0)
+      # runStateWithRef stateRef
+      # expand
+    step { time, passThrough } = do
+      now ← liftEffect nowSeconds
+      passThrough' ←
+        (runReducer reducer $ loop passThrough ∷ Run (LoopExecIn e s a ()) b)
+          # runReaderAt _dt (now `over2 Seconds (-)` time)
           # runStateWithRef stateRef
           # expand
-        pure (Tuple now newPT)
-      initIn' ∷ Run (ExecOut e s a) b
-      initIn' = do
-        initIn
-          # runReaderAt _dt (Seconds 0.0)
-          # runStateWithRef stateRef
-          # expand
-    iterateM
-      (\prev → step prev <* expand wait)
-      (Tuple <$> nowSeconds <*> initIn')
-  where
-    mkUpdateS
-      ∷ (      Run (LoopExecIn e s a ()) b
-        → (b → Run (LoopExecIn e s a ()) b)
-        → Run (ExecOut e s a) Unit )
-      → Run (LoopExecIn e s a extra) b
-      → (b → Run (LoopExecIn e s a extra) b)
-      → GameUpdate extra Req (ExecOut e s a)
-    mkUpdateS = mkUpdate
+      pure { time: now, passThrough: passThrough' }
+  iterateM
+    (\prev → step prev <* expand wait)
+    ({ time: _, passThrough: _} <$> nowSeconds <*> init')
 
 loopUpdate' ∷
   ∀ extra e s a
   . Run (effect ∷ EFFECT, aff ∷ AFF) Unit
   → Run (LoopExecIn e s a extra) Unit
   → AffGameUpdate extra e s a
-loopUpdate' wait update = loopUpdate wait (pure unit) (const update)
+loopUpdate' wait loop = loopUpdate wait (pure unit) (const loop)
 
--- TODO: wrap `d` in `Run` (for dynamic fps in snake, for example)
 matchInterval ∷
   ∀ extra e s a d
   . Duration d
   ⇒ Run (effect ∷ EFFECT, aff ∷ AFF) Unit
-  → d
+  → Run (LoopExecIn e s a extra) d
   → Run (LoopExecIn e s a extra) Unit
   → AffGameUpdate extra e s a
-matchInterval wait duration update = loopUpdate wait (askAt _dt) \accDt' → do
+matchInterval wait duration loop = loopUpdate wait (askAt _dt) \accDt' → do
+  d ← duration
   dt ← askAt _dt
-  let newAccDt = case accDt' <> dt, convertDuration duration of
+  let newAccDt = case accDt' <> dt, convertDuration d of
         Seconds accDt, Seconds frameTime
           | accDt < frameTime       → Left accDt
           | frameTime <= 0.0        → Right 0.0
@@ -176,7 +191,7 @@ matchInterval wait duration update = loopUpdate wait (askAt _dt) \accDt' → do
           | otherwise               → Right (accDt - frameTime)
   Seconds <$> case newAccDt of
     Left  accDt → pure accDt
-    Right accDt → update $> accDt
+    Right accDt → loop $> accDt
 
 
 newtype FPS = FPS Number
