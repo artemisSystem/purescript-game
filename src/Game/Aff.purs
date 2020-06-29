@@ -76,7 +76,7 @@ type AffGameUpdate extra e s a =
   GameUpdate extra (Req e s a) (ExecOut e s a) Unit
 
 type AffGame extra e s a =
-  { init    ∷ Run (effect ∷ EFFECT, aff ∷ AFF) { env :: e, initState :: s }
+  { init    ∷ Run (effect ∷ EFFECT, aff ∷ AFF) { env ∷ e, initState ∷ s }
   , updates ∷ Array (AffGameUpdate extra e s a)
   }
 
