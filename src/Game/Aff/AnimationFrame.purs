@@ -1,4 +1,4 @@
-module Game.Aff.Web where
+module Game.Aff.AnimationFrame where
 
 import Prelude
 
@@ -7,19 +7,16 @@ import Data.Time.Duration (class Duration)
 import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Class (liftEffect)
 import Game.Aff (AffGameUpdate, LoopExecIn, loopUpdate', matchInterval)
-import Run (Run, EFFECT, AFF, liftAff)
+import Run (Run)
 import Web.HTML (window) as W
 import Web.HTML.Window (requestAnimationFrame, cancelAnimationFrame) as W
 import Web.HTML.Window (Window)
 
-delayFrameAff' ∷ Window → Aff Unit
-delayFrameAff' w = makeAff \cb → do
+delayFrame' ∷ Window → Aff Unit
+delayFrame' w = makeAff \cb → do
   id ← W.requestAnimationFrame (cb (Right unit)) w
   pure $ effectCanceler do
     W.cancelAnimationFrame id w
-
-delayFrame' ∷ ∀ r. Window → Run (aff ∷ AFF | r) Unit
-delayFrame' = delayFrameAff' >>> liftAff
 
 animationFrameUpdate' ∷
   ∀ extra e s a
@@ -27,10 +24,7 @@ animationFrameUpdate' ∷
 animationFrameUpdate' w update = loopUpdate' (delayFrame' w) update
 
 
-delayFrameAff ∷ Aff Unit
-delayFrameAff = liftEffect W.window >>= delayFrameAff'
-
-delayFrame ∷ ∀ r. Run (effect ∷ EFFECT, aff ∷ AFF | r) Unit
+delayFrame ∷ Aff Unit
 delayFrame = liftEffect W.window >>= delayFrame'
 
 animationFrameUpdate ∷

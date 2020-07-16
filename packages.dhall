@@ -119,42 +119,38 @@ let additions =
 
 
 let upstream =
-  https://github.com/purescript/package-sets/releases/download/psc-0.13.5-20200103/packages.dhall sha256:0a6051982fb4eedb72fbe5ca4282259719b7b9b525a4dda60367f98079132f30
+      https://github.com/purescript/package-sets/releases/download/psc-0.13.8-20200708/packages.dhall sha256:df5b0f1ae92d4401404344f4fb2a7a3089612c9f30066dcddf9eaea4fe780e29
 
 let overrides = {=}
 
 let additions =
-  { canvas-action =
-    { dependencies =
-      [ "free"
-      , "exceptions"
-      , "newtype"
-      , "effect"
-      , "maybe"
-      , "web-html"
-      , "foldable-traversable"
-      , "polymorphic-vectors"
-      , "prelude"
-      , "transformers"
-      , "canvas"
-      , "math"
-      , "tuples"
-      , "partial"
-      , "colors"
-      , "lists"
-      ]
-    , repo = "https://github.com/3ddyy/purescript-canvas-action.git"
-    , version = "v4.0.1"
-    }
-  , polymorphic-vectors =
-    { dependencies =
-      [ "prelude"
-      , "canvas"
-      , "math"
-      ]
-    , repo = "https://github.com/3ddyy/purescript-polymorphic-vectors.git"
-    , version = "v1.1.1"
-    }
-  }
+      { canvas-action =
+        { dependencies =
+          [ "free"
+          , "exceptions"
+          , "newtype"
+          , "effect"
+          , "maybe"
+          , "web-html"
+          , "foldable-traversable"
+          , "polymorphic-vectors"
+          , "prelude"
+          , "transformers"
+          , "canvas"
+          , "math"
+          , "tuples"
+          , "partial"
+          , "colors"
+          , "lists"
+          ]
+        , repo = "https://github.com/3ddyy/purescript-canvas-action.git"
+        , version = "v4.0.1"
+        }
+      , polymorphic-vectors =
+        { dependencies = [ "prelude", "canvas", "math" ]
+        , repo = "https://github.com/3ddyy/purescript-polymorphic-vectors.git"
+        , version = "v1.1.1"
+        }
+      }
 
-in upstream // overrides // additions
+in  upstream // overrides // additions

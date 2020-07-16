@@ -6,14 +6,11 @@ import Data.Time.Duration (class Duration, fromDuration)
 import Effect.Aff (Aff)
 import Effect.Aff (delay) as Aff
 import Game.Aff (AffGameUpdate, LoopExecIn, loopUpdate')
-import Run (AFF, Run, liftAff)
+import Run (Run)
 
 
-delayAff ∷ ∀ d. Duration d ⇒ d → Aff Unit
-delayAff d = Aff.delay (fromDuration d)
-
-delay ∷ ∀ d r. Duration d ⇒ d → Run (aff ∷ AFF | r) Unit
-delay = liftAff <<< delayAff
+delay ∷ ∀ d. Duration d ⇒ d → Aff Unit
+delay d = Aff.delay (fromDuration d)
 
 everyUpdate ∷
   ∀ extra e s a d

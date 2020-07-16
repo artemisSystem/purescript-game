@@ -47,7 +47,8 @@ _five = SProxy
 
 read5Update ∷
   ∀ extra a
-  . Run (Read5In extra) a → GameUpdate extra Req ExecOut a
+  . Run (Read5In extra) a
+  → GameUpdate extra Req ExecOut a
 read5Update update = GameUpdate \reducer →
   runReaderAt _five 5 (runReducer reducer update)
 

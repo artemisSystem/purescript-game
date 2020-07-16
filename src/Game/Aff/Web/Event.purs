@@ -39,18 +39,19 @@ module Game.Aff.Web.Event
 
 import Prelude
 
+import Control.Monad.Error.Class (throwError)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Int (round)
 import Data.Traversable (for_, traverse_)
 import Data.Vector.Polymorphic (Vector2, (><))
-import Effect.Aff (effectCanceler, makeAff)
+import Effect.Aff (effectCanceler, makeAff, runAff_)
 import Game (GameUpdate(..), runReducer)
 import Game.Aff (AffGameUpdate, _end, _env, _stateRef)
 import Game.Aff.Web.Util (qSel)
 import Game.Util (maybeThrow, newRef, readRef, runStateWithRef, writeRef)
 import Game.Util.Maybe (liftBoth)
-import Run (EFFECT, Run, SProxy(..), liftAff, liftEffect, runBaseEffect, expand)
+import Run (AFF, EFFECT, Run, SProxy(..), expand, liftAff, liftEffect, runBaseAff')
 import Run.Choose (CHOOSE, runChoose)
 import Run.Except (EXCEPT, FAIL, runExceptAt, throwAt)
 import Run.Reader (READER, askAt, runReaderAt)
@@ -102,6 +103,7 @@ type EventExecIn e s a r =
   , end    ∷ EXCEPT a
   , event  ∷ READER Event
   , effect ∷ EFFECT
+  , aff    ∷ AFF
   | r )
 
 type EventTargetRow e s a =
@@ -109,6 +111,7 @@ type EventTargetRow e s a =
   , env    ∷ READER e
   , end    ∷ EXCEPT a
   , effect ∷ EFFECT
+  , aff    ∷ AFF
   , choose ∷ CHOOSE
   )
 
@@ -135,15 +138,16 @@ eventUpdate { eventType, useCapture } targets update =
             for_ targetArray do removeEventListener eventType l useCapture
       listener ← eventListener \event → do
         state ← readRef stateRef
-        r ← (runReducer reducer update ∷ Run (EventExecIn e s a ()) Unit)
+        (runReducer reducer update ∷ Run (EventExecIn e s a ()) Unit)
           # runReaderAt _event event
           # runReaderAt _env env
           # execState state
           # runExceptAt _end
-          # runBaseEffect
-        case r of
-          Right newState → writeRef newState stateRef
-          Left end → canceler *> cb (Right end)
+          # runBaseAff'
+          # runAff_ case _ of
+              Right (Right newState) → writeRef newState stateRef
+              Right (Left  end     ) → canceler *> cb (Right end)
+              Left         error     → throwError error
       writeRef (Just listener) listenerRef
       for_ targetArray do addEventListener eventType listener useCapture
       pure (effectCanceler canceler)

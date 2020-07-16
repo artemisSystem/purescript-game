@@ -6,7 +6,7 @@ import Data.Foldable (oneOfMap)
 import Effect (Effect)
 import Effect.Class.Console (log)
 import Game (mkReducer)
-import Game.Aff (AffGame, _env, runGameEffect)
+import Game.Aff (AffGame, _env, mkAffGame, launchGame_)
 import Game.Aff.Web.Event (click)
 import Game.Aff.Web.Util (qSel)
 import Game.Util (asksAt)
@@ -19,24 +19,26 @@ import Web.DOM.Element as Element
 import Web.Event.EventTarget (EventTarget)
 
 
+type Extra = ()
+
 type Env =
   { button1 ∷ EventTarget
   , button2 ∷ EventTarget
   }
-
-type Extra = ()
 
 type State = Int
 
 getButton ∷ ∀ r. String → Run (effect ∷ EFFECT, except ∷ FAIL | r) EventTarget
 getButton button = qSel (QuerySelector button) <#> Element.toEventTarget
 
-game ∷ AffGame Extra Env State Unit
-game =
+game ∷ AffGame Extra Unit
+game = mkAffGame
   { init: runMaybe "Buttons missing from HTML" ado
       button1 ← getButton "#button1"
       button2 ← getButton "#button2"
-      in { env: { button1, button2 }, initState: 0 }
+      in { env:       { button1, button2 } ∷ Env
+         , initState: 0                    ∷ State
+         }
   , updates:
     [ click (oneOfMap (asksAt _env) [_.button1, _.button2]) do
         modify (_ + 1)
@@ -46,4 +48,4 @@ game =
   }
 
 main ∷ Effect Unit
-main = runGameEffect (mkReducer identity) game
+main = launchGame_ (mkReducer identity) game

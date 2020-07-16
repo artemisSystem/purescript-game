@@ -1,9 +1,11 @@
 module Game
   ( GameUpdate(..)
   , runUpdate
+
   , Reducer
   , mkReducer
   , runReducer
+
   , Game
   , mkRunGame
   ) where
@@ -30,7 +32,7 @@ runUpdate reducer (GameUpdate update) = update reducer
 
 data Reducer (extra ∷ # Type) (req ∷ # Type)
 
--- mention in docs: need to use `do`, not `$` (EscapedSkolem)
+-- TODO: mention in docs: need to use `do`, not `$` (EscapedSkolem)
 mkReducer ∷
   ∀ extra req extra_req
   . Union extra req extra_req
@@ -49,6 +51,22 @@ runReducer ∷
   → Run execIn a
 runReducer reducer update =
   (unsafeCoerce reducer ∷ Run update a → Run execIn a) update
+
+composeReducer ∷
+  ∀ extra1 extra2 extra3 req extra2r extra3r
+  . Union extra1 extra2 extra3
+  ⇒ Union extra2 req extra2r
+  ⇒ Union extra3 req extra3r
+  ⇒ Union extra2r extra1 extra3r
+  ⇒ Reducer extra1 req → Reducer extra2 req → Reducer extra3 req
+composeReducer r1 r2 = mkReducer (f1 >>> f2)
+  where
+    f1 ∷ ∀ a. Run (Anything extra3r) a → Run (Anything extra2r) a
+    f1 = unsafeCoerce r1
+    f2 ∷ ∀ a. Run (Anything extra2r) a → Run (Anything req) a
+    f2 = unsafeCoerce r2
+
+infixl 5 composeReducer as >->
 
 
 type Game
