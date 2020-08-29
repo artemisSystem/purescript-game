@@ -4,7 +4,7 @@
 
 ### TODO: Rewrite the readme
 
-Talk about:
+Mention in readme (notes to self):
 
 - the smaller `req` is, the less requirement you set for the updates you can
   use, but `extra` needs to be a row that can be reduced to `req`
