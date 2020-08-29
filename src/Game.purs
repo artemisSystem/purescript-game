@@ -76,13 +76,13 @@ type Game
   a
   = Array (GameUpdate extra req execOut a)
 
+-- | Make a function that can run a `Game` in `Run`
 mkRunGame ∷
   ∀ extra req execOut interpreted a b
   . (Run execOut a → Run interpreted b)
   → (Array (Run interpreted b) → Run interpreted b)
   → Reducer extra req
-  → Game extra req execOut a
-  → Run interpreted b
+  → (Game extra req execOut a → Run interpreted b)
 mkRunGame interpret parallelize reducer updates = updates
   # map (runUpdate reducer)
   # map interpret
