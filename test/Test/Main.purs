@@ -8,7 +8,7 @@ import Data.Traversable (sequence)
 import Data.Tuple (snd)
 import Effect (Effect)
 import Effect.Class.Console (log)
-import Game (GameUpdate(..), Game, Reducer, mkRunGame, mkReducer, runReducer)
+import Game (Game, GameUpdate(..), Reducer, identityReducer, mkReducer, mkRunGame, runReducer)
 import Run (EFFECT, Run, SProxy(..), interpret, match, runBaseEffect)
 import Run.Reader (READER, askAt, runReaderAt)
 import Run.State (STATE, evalStateAt, _state, get, modify, put)
@@ -135,5 +135,5 @@ main = runBaseEffect do
   result2 ← runGame (mkReducer do foldWriterAt _void const "" >>> map snd) game2
   log do "result of game 2: " <> show result2
 
-  result3 ← runGame (mkReducer identity) game3
+  result3 ← runGame identityReducer game3
   log do "result of game 3: " <> show result3

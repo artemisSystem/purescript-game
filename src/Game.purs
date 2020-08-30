@@ -5,6 +5,9 @@ module Game
   , Reducer
   , mkReducer
   , runReducer
+  , composeReducer
+  , (>->)
+  , identityReducer
 
   , Game
   , mkRunGame
@@ -16,6 +19,7 @@ import Prelude
 import Prim.Row (class Union, class Nub)
 import Run (Run)
 import Run.Unsafe (Anything)
+import Type.Row (type (+))
 import Unsafe.Coerce (unsafeCoerce)
 
 
@@ -36,7 +40,7 @@ data Reducer (extra ∷ # Type) (req ∷ # Type)
 mkReducer ∷
   ∀ extra req extra_req
   . Union extra req extra_req
-  ⇒ (Run (Anything extra_req) ~> Run (Anything req))
+  ⇒ (Run (Anything + extra_req) ~> Run (Anything + req))
   → Reducer extra req
 mkReducer = unsafeCoerce
 
@@ -68,6 +72,8 @@ composeReducer r1 r2 = mkReducer (f1 >>> f2)
 
 infixl 5 composeReducer as >->
 
+identityReducer ∷ ∀ req. Reducer () req
+identityReducer = mkReducer identity
 
 type Game
   (extra ∷ # Type)
@@ -81,8 +87,7 @@ mkRunGame ∷
   ∀ extra req execOut interpreted a b
   . (Run execOut a → Run interpreted b)
   → (Array (Run interpreted b) → Run interpreted b)
-  → Reducer extra req
-  → (Game extra req execOut a → Run interpreted b)
+  → (Reducer extra req → Game extra req execOut a → Run interpreted b)
 mkRunGame interpret parallelize reducer updates = updates
   # map (runUpdate reducer)
   # map interpret

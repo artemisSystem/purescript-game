@@ -5,7 +5,7 @@ import Prelude
 import Data.Foldable (oneOfMap)
 import Effect (Effect)
 import Effect.Class.Console (log)
-import Game (mkReducer)
+import Game (identityReducer)
 import Game.Aff (AffGame, _env, mkAffGame, launchGame_)
 import Game.Aff.Web.Event (click)
 import Game.Aff.Web.Util (qSel)
@@ -48,4 +48,4 @@ game = mkAffGame
   }
 
 main ∷ Effect Unit
-main = launchGame_ (mkReducer identity) game
+main = launchGame_ identityReducer game
