@@ -1,93 +1,92 @@
 # purescript-game
 
+## Installation
+
+```sh
+spago install game
+```
+
 ## Documentation
 
-### TODO: Rewrite the readme
-
-Mention in readme (notes to self):
-
-- the smaller `req` is, the less requirement you set for the updates you can
-  use, but `extra` needs to be a row that can be reduced to `req`
-
-OLD:
-
-This is a package for running a game loop in a browser in purescript using
-`window.requestAnimationFrame`.
-
-It has a type alias called `Game` which is a record containing various functions
-needed to run your game loop.
-
-It looks like this:
-
-```purescript
-type Game state return =
-  { init    ∷ Effect state
-  , update  ∷ Seconds → state → Effect state
-  , display ∷ state → Effect Unit
-  , end     ∷ state → Effect (Maybe (Either Error return))
-  , events  ∷ List (GameEvent state)
-  }
-```
-
-`state` is the type of the state used in your game. This will most likely be a
-record type containing all the different values your game needs.
-
-`return` is the type of the value that will be returned by the `Aff` your game
-is run in, if and when it terminates.
-
-`init ∷ Effect state` is the initial state of your game. It is wrapped in
-`Effect` so that it is possible for the initial state to depend on random
-number generation, database queries and other things.
-
-`update ∷ Seconds → state → Effect state` is the state update function that
-will be run every frame. It takes a value of type `Seconds`, which is the time
-since the last frame, and a value of type `state`, which is the state of the
-game before the current frame started. It needs to return a value of type
-`Effect state`, where the containted `state` will be the state of the game after
-the frame.
-
-`display ∷ state → Effect Unit` is the function that is used to render your
-game. Given the state of the game, it needs to return an `Effect Unit`, which
-should display the game in some way. This is usually drawing on a HTML5 canvas,
-manipulating the DOM, or logging to the console. This function is run right
-after `update`.
-
-`end ∷ state → Effect (Maybe (Either Error return))` is the function that is
-used to determine whether to terminate the game loop. It is run after every
-frame. Given the current state, if it returns `Nothing`, the game loop will keep
-running for another frame. If it returns a `Just`, the game loop will end. If
-the inner value is an `Error`, the `Aff` will error, and if the inner value is
-of type `return`, it will resolve the `Aff` with that value.
-
-`events ∷ List (GameEvent state)` is a list of events watched by the game.
-The type alias `GameEvent` is used to represent these events. It looks like
-this:
-
-```purescript
-type GameEvent state =
-  { eventType  ∷ EventType
-  , target     ∷ EventTarget
-  , update     ∷ Event → state → Effect state
-  , useCapture ∷ Boolean
-  }
-```
-
-`eventType ∷ EventType` is the type of the event, see [`EventType`](https://pursuit.purescript.org/packages/purescript-web-events/2.0.1/docs/Web.Event.Event#t:EventType).
-
-`target ∷ EventTarget` is the event target, see [`EventTarget`](https://pursuit.purescript.org/packages/purescript-web-events/2.0.1/docs/Web.Event.Internal.Types#t:EventTarget).
-
-`update ∷ Event → state → Effect state` is the function that gets run when
-the event occurs. It takes the `Event` object and the current state, and returns
-a new state, wrapped in `Effect`.
-
-`useCapture ∷ Boolean` specifies whether to use capture, see
-[`EventTarget.addEventListener`](https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener).
-
-Use `game` to create an `Aff` from a `Game` value. From there, you can use
-`launchAff_` from [`Effect.Aff`](https://pursuit.purescript.org/packages/purescript-aff/5.1.2/docs/Effect.Aff#v:launchAff_)
-to run the `Aff` in an `Effect`. Other ways to run an `Aff` and more info can
-be found [here](https://pursuit.purescript.org/packages/purescript-aff/5.1.2).
+- [Reference](#reference)
+- [The `Game` module](#the-game-module)
+  - [`Reducer`](#reducer)
+  - [`GameUpdate`](#gameupdate)
+  - [`Game`](#game)
+- [Using `AffGame`](#using-affgame)
 
 ### Reference
 
-Module reference is [published on Pursuit](http://pursuit.purescript.org/packages/purescript-game).
+Module reference is [published on Pursuit](https://pursuit.purescript.org/packages/purescript-game).
+
+### The `Game` module
+
+This section explains in detail how `Game` works and what it can do. If you just
+want to learn about `AffGame`, you can skip forward.
+
+#### `Reducer`
+
+`Reducer` is for describing a reduction of a `Run` effect row. Its first
+argument `extra` contains the effects that will be removed, and its second
+argument `req` contains the effects that must be present in the row to perform
+the reduction. So, having a `Reducer extra req` means that you can interpret all
+the effects in `extra` either purely or in terms of any of the effects in `req`.
+`mkReducer` is a function you can use to construct a reducer, where you provide
+a function `Run (Anything + extra_req) ~> Run (Anything + req)` where
+`extra_req` is the union of `extra` and `req`. See the top-level docs in
+`Run.Unsafe` for a more in-depth explanation of `Anything`.
+
+There is provided an `identityReducer`, which is a reducer that doesn't reduce
+any effects, useful for when your `extra` is an empty row. There is also
+`composeReducer` (infix version `(>->)`), which composes two reducers left to
+right.
+
+#### `GameUpdate`
+
+`GameUpdate` is a type constructor that takes four arguments: `extra ∷ # Type`,
+`req ∷ # Type`, `execOut ∷ # Type` and `a ∷ Type`. It's a newtype around
+`Reducer extra req → Run execOut a`. In essence, it's a `Run` action that can
+run effects from `extra`, provided all effects in `req` are present.
+
+If you want to make a template function to construct a `GameUpdate`, you can
+structure it like this:
+
+- Have `update` be the union of `execIn` and `extra`, and have the caller
+supply a `Run update a` that you convert to a `Run execIn a` using the reducer.
+- Turn `Run execIn a` into `Run execOut a`, reducing the specific effects for
+your update template into the more general effects supported globally in the
+`Game`.
+- `execIn` will in most cases be a superset of `execOut`
+
+Note that it is usually recommended to make your own row type like this:
+
+```purescript
+type MyUpdateExecIn r =
+  ( {- your execIn effects go in here, looking like `name ∷ EFFECT_NAME` -}
+  | r)`
+```
+
+Where you omit the `Union` constraint and the `update` type variable, and use
+`MyUpdateExecIn extra` instead of `update`. You can find an explanation to why
+this may be needed [here](https://github.com/purescript/purescript/issues/3242).
+
+#### `Game`
+
+A `Game` is simply an `Array` of `GameUpdate`s.
+
+The function `mkRunGame` lets you create a function that will run the game. It
+takes two functions as input:
+
+- `interpret ∷ Run execOut a → Run interpreted b`  
+This function decides how all the updates will get interpreted individually.
+- `parallelize ∷ Array (Run interpreted b) → Run interpreted b`  
+This function decides how all the updates will be combined together. It is
+called `parallelize` internally because it will usually run all the updates in
+parallel. This is what `mkAffGame` does.
+
+After calling `mkRunGame` with these two functions, you will have a `Reducer
+extra req → Game extra req execOut a → Run interpreted b`. You can then pass in
+a `Reducer` and a `Game`, and it will be run in `Run` with the `interpreted` row
+of effects.
+
+### Using `AffGame`
