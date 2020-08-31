@@ -32,6 +32,8 @@ animationFrameUpdate ∷
   . Run (LoopExecIn e s a extra) Unit → AffGameUpdate extra e s a
 animationFrameUpdate = loopUpdate' delayFrame
 
+-- | Uses `requestAnimationFrame` to run the given update at the given interval
+-- | as accurately as possible
 animationFrameMatchInterval ∷
   ∀ extra e s a d
   . Duration d

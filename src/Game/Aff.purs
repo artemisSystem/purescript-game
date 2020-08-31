@@ -115,7 +115,8 @@ type Interpreted e s =
 type Req = (effect ∷ EFFECT, aff ∷ AFF)
 
 
--- |
+-- | An `AffGame` is an `Aff` that takes a `Reducer` as an argument. Can be
+-- | constructed from a `TemplateAffGame` using `mkAffGame`.
 newtype AffGame extra a = AffGame (Reducer extra Req → Aff a)
 
 derive instance newtypeAffGame ∷ Newtype (AffGame extra a) _
@@ -184,7 +185,7 @@ instance parallelAffGame ∷ Parallel (ParAffGame extra) (AffGame extra) where
   parallel = over AffGame (map parallel)
   sequential = over ParAffGame (map sequential)
 
--- |
+-- | A variant of `AffGame` that composes effects in parallel
 newtype ParAffGame extra a = ParAffGame (Reducer extra Req → ParAff a)
 
 derive instance newtypeParAffGame ∷ Newtype (ParAffGame extra a) _
@@ -211,6 +212,8 @@ instance monoidParAffGame ∷ Monoid a ⇒ Monoid (ParAffGame extra a) where
   mempty = pure mempty
 
 
+-- | Construct a simple `AffGame` using a `Run` whose effect row includes the
+-- | `AffGame`'s `extra` row
 simpleAffGame ∷
   ∀ extra a. Run (effect ∷ EFFECT, aff ∷ AFF | extra) a → AffGame extra a
 simpleAffGame game = AffGame \reducer → game
@@ -287,7 +290,7 @@ launchGame_ ∷
   → Effect Unit
 launchGame_ reducer game = void do launchGame reducer game
 
-
+-- | An `AffGameUpdate` that runs once when the `AffGame` starts
 onStart ∷
   ∀ extra e s a
   . Run (OnStartExecIn e s a extra) Unit
@@ -299,6 +302,8 @@ onStart effect = GameUpdate \reducer → do
     # expand
   Run.liftAff never
 
+-- | Create an `AffGameUpdate` that runs in loops, using the `Aff Unit` as a
+-- | waiting action inbetween
 loopUpdate ∷
   ∀ extra e s a b
   . Aff Unit
@@ -324,6 +329,8 @@ loopUpdate wait init loop = GameUpdate \reducer → do
     (\prev → step prev <* liftAff wait)
     ({ time: _, passThrough: _} <$> nowSeconds <*> init')
 
+-- | Create a simple loop update that runs the same action repeatedly, using
+-- | the `Aff Unit` as a waiting action inbetween
 loopUpdate' ∷
   ∀ extra e s a
   . Aff Unit
@@ -331,6 +338,24 @@ loopUpdate' ∷
   → AffGameUpdate extra e s a
 loopUpdate' wait loop = loopUpdate wait (pure unit) (const loop)
 
+-- | Create a loop that on every iteration (distinguished by the `Aff Unit`)
+-- | tries to match the interval returned by the first `Run` action. It will not
+-- | run the second `Run` action (the "update") when looping if the given
+-- | duration has not passed since the last update was run.
+-- |
+-- | It compensates for
+-- | lost time, so that if the duration is a `pure (Milliseconds 10.0)`, and
+-- | the waiting action alternates between resolving after 12ms and 8ms, when
+-- | the update is first run after 12ms, `matchInterval` will remember that it
+-- | is 2ms behind, and run the update again when the waiting action resolves
+-- | after another 8ms. Also, if the waiting action is long enough that 3 times
+-- | the returned duration has passed since the last update, it will clear the
+-- | accumulated time difference and run the update once. This is so that if
+-- | the waiting action takes a lot longer to resolve one time, a bunch of
+-- | updates won't pile up and run in quick succession (otherwise, this can
+-- | happen if you switch away from a tab when using `delayFrame` as your
+-- | waiting action, as it will stop updating until the tab becomes active
+-- | again).
 matchInterval ∷
   ∀ extra e s a d
   . Duration d
@@ -352,6 +377,10 @@ matchInterval wait duration loop = loopUpdate wait (askAt _dt) \accDt' → do
     Right accDt → loop $> accDt
 
 
+-- | A newtype with a `Duration` instance, where the stored number describes an
+-- | amount of frames per second. Running `fromDuration` will return the amount
+-- | of milliseconds a frame will take at that framerate. `fromDuration (FPS
+-- | 0.0)` is `Milliseconds 0.0`.
 newtype FPS = FPS Number
 
 derive instance newtypeFPS ∷ Newtype FPS _

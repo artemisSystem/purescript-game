@@ -6,6 +6,16 @@
 spago install game
 ```
 
+## Developing
+
+Make sure you have the purescript compiler, parcel and spago installed and
+available on your PATH.
+
+To test one of the examples, run `npm run example-<Name>`, replacing `<Name>`
+with the name of the example or test you want to run. This will create a
+server that auto-rebuilds every time you make a change to its source, and open a
+browser window. The examples are located in `/test/Test/<Name>`.
+
 ## Documentation
 
 - [Reference](#reference)
@@ -14,15 +24,14 @@ spago install game
   - [`GameUpdate`](#gameupdate)
   - [`Game`](#game)
 - [Using `AffGame`](#using-affgame)
+  - [`TemplateAffGame`](#templateaffgame)
+  - [`AffGame`](#affgame)
 
 ### Reference
 
 Module reference is [published on Pursuit](https://pursuit.purescript.org/packages/purescript-game).
 
 ### The `Game` module
-
-This section explains in detail how `Game` works and what it can do. If you just
-want to learn about `AffGame`, you can skip forward.
 
 #### `Reducer`
 
@@ -90,3 +99,54 @@ a `Reducer` and a `Game`, and it will be run in `Run` with the `interpreted` ro
 of effects.
 
 ### Using `AffGame`
+
+#### `TemplateAffGame`
+
+`TemplateAffGame` is how `AffGame` relates to `Game`. This is how it's defined:
+
+```purescript
+type ExecOut e s a =
+  ( stateRef ∷ READER (Ref s)
+  , env      ∷ READER e
+  , end      ∷ EXCEPT a
+  , effect   ∷ EFFECT
+  , aff      ∷ AFF
+  )
+
+type Req = (effect ∷ EFFECT, aff ∷ AFF)
+
+type AffGameUpdate extra e s a =
+  GameUpdate extra Req (ExecOut e s a) Unit
+
+type TemplateAffGame extra e s a =
+  { init    ∷ Run (effect ∷ EFFECT, aff ∷ AFF) { env ∷ e, initState ∷ s }
+  , updates ∷ Array (AffGameUpdate extra e s a)
+  }
+```
+
+So `TemplateAffGame` can be seen as an extension of `Game`, where `req` is
+`EFFECT` and `AFF`, and `execOut` is those two effects in addition to these:
+
+- `env ∷ READER e`, which can read a custom environment that is set in a
+`TemplateAffGame`'s initialization.
+- `end ∷ EXCEPT a`, which when used will terminate the `TemplateAffGame`,
+resolving with the provided value
+- `stateRef ∷ READER (Ref s)`, which can read a `Ref` containing the state of
+the `TemplateAffGame`.
+
+In addition to specifying `req` and `execOut`, `TemplateAffGame` also has an
+initalization that runs before the updates, and all updates must return `Unit`.
+
+When using `AffGame`, you'll typically be structuring things in a
+`TemplateAffGame`, using `mkAffGame` to make an `AffGame` from it, and then
+running that using either `launchGame_` or `runGameAff`.
+
+#### `AffGame`
+
+An `AffGame extra a` is simply `Reducer extra Req → Aff a`. This way, it's easy
+to run a `TemplateAffGame` in it, while also making it easy to provide lots of
+useful primitives and building blocks. It has all the instances you'd expect and
+probably some more on top of that.
+
+For examples on how to use `AffGame`, see the tests, or the
+[cookbook example](https://github.com/JordanMartinez/purescript-cookbook/pull/233)

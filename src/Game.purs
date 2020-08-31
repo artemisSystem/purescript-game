@@ -36,7 +36,8 @@ runUpdate reducer (GameUpdate update) = update reducer
 
 data Reducer (extra ∷ # Type) (req ∷ # Type)
 
--- TODO: mention in docs: need to use `do`, not `$` (EscapedSkolem)
+-- | Create a `Reducer`. Note: doing `mkReducer $ f` will raise an
+-- | `EscapedSkolem` error. Use parentheses or `do` instead of `$`.
 mkReducer ∷
   ∀ extra req extra_req
   . Union extra req extra_req
@@ -44,6 +45,7 @@ mkReducer ∷
   → Reducer extra req
 mkReducer = unsafeCoerce
 
+-- | Turn a `Reducer` into a function that acts on a specific effect row 
 runReducer ∷
   ∀ update execIn nubExecIn extra req req_execIn a
   . Union execIn extra update
@@ -51,11 +53,11 @@ runReducer ∷
   ⇒ Nub execIn nubExecIn
   ⇒ Nub req_execIn nubExecIn
   ⇒ Reducer extra req
-  → Run update a
-  → Run execIn a
+  → (Run update a → Run execIn a)
 runReducer reducer update =
   (unsafeCoerce reducer ∷ Run update a → Run execIn a) update
 
+-- | Compose two `Reducer`s left to right
 composeReducer ∷
   ∀ extra1 extra2 extra3 req extra2r extra3r
   . Union extra1 extra2 extra3
@@ -72,6 +74,8 @@ composeReducer r1 r2 = mkReducer (f1 >>> f2)
 
 infixl 5 composeReducer as >->
 
+-- | The identity `Reducer`. `runReducer identityReducer` is the same as
+-- | `identity`.
 identityReducer ∷ ∀ req. Reducer () req
 identityReducer = mkReducer identity
 

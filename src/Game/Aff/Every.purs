@@ -12,6 +12,7 @@ import Run (Run)
 delay ∷ ∀ d. Duration d ⇒ d → Aff Unit
 delay d = Aff.delay (fromDuration d)
 
+-- | An `AffGameUpdate` that runs its update at the specified interval
 everyUpdate ∷
   ∀ extra e s a d
   . Duration d
