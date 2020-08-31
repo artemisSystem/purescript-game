@@ -1,30 +1,49 @@
 {
-  "name": "purescript-game",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/3ddyy/purescript-game.git"
-  },
-  "ignore": [
-    "**/.*",
-    "node_modules",
-    "bower_components",
-    "output"
-  ],
-  "dependencies": {
-    "purescript-prelude": "^4.1.1",
-    "purescript-effect": "^2.0.1",
-    "purescript-aff": "^5.1.2",
-    "purescript-datetime": "^4.1.1",
-    "purescript-now": "^4.0.0",
-    "purescript-refs": "^4.1.0",
-    "purescript-web-html": "^2.3.0",
-    "purescript-canvas-action": "^1.0.2",
-    "purescript-foldable-traversable": "^4.1.1",
-    "purescript-polymorphic-vectors": "^1.1.1"
-  },
-  "devDependencies": {
-    "purescript-console": "^4.2.0",
-    "purescript-psci-support": "^4.0.0"
-  }
+    "name": "purescript-game",
+    "license": [
+        "MIT"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/3ddyy/purescript-game.git"
+    },
+    "ignore": [
+        "**/.*",
+        "node_modules",
+        "bower_components",
+        "output"
+    ],
+    "dependencies": {
+        "purescript-aff": "^v5.1.2",
+        "purescript-canvas-action": "^v4.0.1",
+        "purescript-console": "^v4.4.0",
+        "purescript-control": "^v4.2.0",
+        "purescript-datetime": "^v4.1.1",
+        "purescript-effect": "^v2.0.1",
+        "purescript-filterable": "^v3.0.2",
+        "purescript-foldable-traversable": "^v4.1.1",
+        "purescript-fork": "^v4.0.0",
+        "purescript-free": "^v5.2.0",
+        "purescript-functors": "^v3.1.1",
+        "purescript-identity": "^v4.1.0",
+        "purescript-js-timers": "^v4.0.1",
+        "purescript-monad-loops": "^v0.5.0",
+        "purescript-newtype": "^v3.0.0",
+        "purescript-now": "^v4.0.0",
+        "purescript-parallel": "^v4.0.0",
+        "purescript-partial": "^v2.0.1",
+        "purescript-polymorphic-vectors": "^v1.1.1",
+        "purescript-prelude": "^v4.1.1",
+        "purescript-psci-support": "^v4.0.0",
+        "purescript-record": "^v2.0.2",
+        "purescript-record-extra": "^v3.0.1",
+        "purescript-refs": "^v4.1.0",
+        "purescript-run": "^v3.0.1",
+        "purescript-tailrec": "^v4.1.1",
+        "purescript-typelevel-prelude": "^v5.0.2",
+        "purescript-undefined": "^v1.0.2",
+        "purescript-variant": "^v6.0.1",
+        "purescript-web-html": "^v2.3.0",
+        "purescript-web-uievents": "^v2.0.0"
+    }
 }
