@@ -7,6 +7,7 @@
     "example-Event": "npx spago -x dev.dhall build && (npx parcel serve --open -p 1337 --out-dir dev test/Test/Event/index.html & npx spago -x dev.dhall build --watch)"
   },
   "devDependencies": {
+    "bower": "^1.8.8",
     "parcel": "^1.12.4",
     "pscid": "^2.9.3",
     "pulp": "^15.0.0",
