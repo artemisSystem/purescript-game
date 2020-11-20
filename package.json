@@ -1,7 +1,16 @@
-{ "private": true
-, "scripts":
-  { "test": "spago test"
-  , "example-AffGame": "spago build && (parcel serve --open -p 1337 --out-dir dev test/Test/AffGame/index.html & spago build --watch)"
-  , "example-Event": "spago build && (parcel serve --open -p 1337 --out-dir dev test/Test/Event/index.html & spago build --watch)"
+{
+  "private": true,
+  "scripts": {
+    "test": "npx spago -x dev.dhall test",
+    "repl": "npx spago -x dev.dhall repl",
+    "example-AffGame": "npx spago -x dev.dhall build && (npx parcel serve --open -p 1337 --out-dir dev test/Test/AffGame/index.html & npx spago -x dev.dhall build --watch)",
+    "example-Event": "npx spago -x dev.dhall build && (npx parcel serve --open -p 1337 --out-dir dev test/Test/Event/index.html & npx spago -x dev.dhall build --watch)"
+  },
+  "devDependencies": {
+    "parcel": "^1.12.4",
+    "pscid": "^2.9.3",
+    "pulp": "^15.0.0",
+    "purescript": "^0.13.8",
+    "spago": "^0.17.0"
   }
 }
