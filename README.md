@@ -80,7 +80,7 @@ this may be needed [here](https://github.com/purescript/purescript/issues/3242).
 
 #### `Game`
 
-A `Game` is simply an `Array` of `GameUpdate`s.
+A `Game` is an `Array` of `GameUpdate`s.
 
 The function `mkRunGame` lets you create a function that will run the game. It
 takes two functions as input:
@@ -142,10 +142,10 @@ running that using either `launchGame_` or `runGameAff`.
 
 #### `AffGame`
 
-An `AffGame extra a` is simply `Reducer extra Req → Aff a`. This way, it's easy
+An `AffGame extra a` is `Reducer extra Req → Aff a`. This way, it's easy
 to run a `TemplateAffGame` in it, while also making it easy to provide lots of
 useful primitives and building blocks. It has all the instances you'd expect and
 probably some more on top of that.
 
 For examples on how to use `AffGame`, see the tests, or the
-[cookbook example](https://github.com/JordanMartinez/purescript-cookbook/pull/233)
+[cookbook example](https://github.com/JordanMartinez/purescript-cookbook/tree/master/recipes/AffGameSnakeJs)
