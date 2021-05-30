@@ -144,8 +144,7 @@ running that using either `launchGame_` or `runGameAff`.
 
 An `AffGame extra a` is `Reducer extra Req → Aff a`. This way, it's easy
 to run a `TemplateAffGame` in it, while also making it easy to provide lots of
-useful primitives and building blocks. It has all the instances you'd expect and
-probably some more on top of that.
+useful primitives and building blocks.
 
 For examples on how to use `AffGame`, see the tests, or the
 [cookbook example](https://github.com/JordanMartinez/purescript-cookbook/tree/master/recipes/AffGameSnakeJs)
