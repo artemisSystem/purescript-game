@@ -1,3 +1,5 @@
+-- todo: document whether updates will run once right away or defer its first
+-- computation
 module Game.Aff
   ( _dt
   , _end
@@ -10,9 +12,13 @@ module Game.Aff
   , Req
 
   , AffGame(..)
+  , unAffGame
+  , local
   , ParAffGame
-
+  , unParAffGame
   , simpleAffGame
+
+  , AffGameUpdateM
   , AffGameUpdate
   , TemplateAffGame
   , interpretAffGame
@@ -37,290 +43,408 @@ import Prelude hiding (join)
 
 import Control.Apply (lift2)
 import Control.Lazy (class Lazy)
-import Control.Monad.Error.Class (class MonadError, class MonadThrow, catchError)
-import Control.Monad.Fork.Class (class MonadBracket, class MonadFork, class MonadKill, bracket, fork, join, kill, never, suspend, uninterruptible)
+import Control.Monad.Error.Class (class MonadError, class MonadThrow, catchError, throwError)
+import Control.Monad.Error.Class as MonadThrow
+import Control.Monad.Except (ExceptT)
+import Control.Monad.Except as MonadExcept
+import Control.Monad.Fork.Class (never)
+import Control.Monad.Reader (class MonadAsk, ReaderT(..), ask, runReaderT)
+import Control.Monad.Reader as MR
+import Control.Monad.Reader as MonadReader
 import Control.Monad.Rec.Class (class MonadRec, tailRecM)
-import Control.Parallel (parOneOfMap, class Parallel, parallel, sequential)
-import Control.Plus (class Alt, class Plus, empty, (<|>))
-import Data.Either (either, Either(..))
-import Data.Newtype (class Newtype, over, over2)
+import Control.Parallel (class Parallel, parOneOfMap, parallel, sequential)
+import Control.Plus (class Alt, class Plus, alt, empty)
+import Data.Either (Either(..), either)
+import Data.Functor.Compose (Compose(..))
+import Data.Newtype (class Newtype, over2)
 import Data.Time.Duration (Seconds(..), class Duration, Milliseconds(..), convertDuration)
 import Effect (Effect)
-import Effect.Aff (Aff, Fiber, ParAff, launchAff, throwError, try)
+import Effect.Aff (Aff, Fiber, ParAff, launchAff, try)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Exception (Error)
 import Effect.Ref (Ref)
 import Game (GameUpdate(..), Reducer, mkReducer, runReducer) as Exports
 import Game (GameUpdate(..), Reducer, mkRunGame, runReducer)
 import Game.Util (forever, fromLeft, iterateM, newRef, nowSeconds, runStateWithRef)
-import Run (AFF, EFFECT, Run, SProxy(..), expand, runBaseAff')
+import Run (AFF, EFFECT, Run, expand, runBaseAff, runBaseAff')
 import Run (liftAff) as Run
-import Run.Except (EXCEPT, runExceptAt)
-import Run.Reader (READER, runReaderAt, askAt)
+import Run.Except (EXCEPT, Except, runExcept, runExceptAt, throw)
+import Run.Reader (Reader, askAt, runReaderAt)
 import Run.State (STATE)
+import Safe.Coerce (coerce)
+import Type.Proxy (Proxy(..))
+import Type.Row (type (+))
 
 
-_dt ∷ SProxy "dt"
-_dt = SProxy
+_dt ∷ Proxy "dt"
+_dt = Proxy
 
-_end ∷ SProxy "end"
-_end = SProxy
+_end ∷ Proxy "end"
+_end = Proxy
 
-_stateRef ∷ SProxy "stateRef"
-_stateRef = SProxy
+_stateRef ∷ Proxy "stateRef"
+_stateRef = Proxy
 
-_env ∷ SProxy "env"
-_env = SProxy
+_env ∷ Proxy "env"
+_env = Proxy
 
--- | The execIn effects that are used for the `onStart` update
-type OnStartExecIn e s a r =
-  ( state   ∷ STATE s
-  , env     ∷ READER e
-  , end     ∷ EXCEPT a
-  , effect  ∷ EFFECT
-  , aff     ∷ AFF
+-- todo: maybe rename all the `ExecIn`, `ExecOut`, etc. to something more
+-- understandable
+-- | The execIn effects that are supported by the `onStart` update
+type OnStartExecIn ∷
+  Type → Type → Type → Type → Row (Type → Type) → Row (Type → Type)
+type OnStartExecIn env state err a r
+  = STATE state + EXCEPT err + EFFECT + AFF +
+  ( env ∷ Reader env
+  , end ∷ Except a
   | r )
 
--- | The execIn effects that are used for most loop updates
-type LoopExecIn e s a r =
-  ( state   ∷ STATE s
-  , env     ∷ READER e
-  , end     ∷ EXCEPT a
-  , dt      ∷ READER Seconds
-  , effect  ∷ EFFECT
-  , aff     ∷ AFF
+-- | The execIn effects that are supported by most loop updates
+type LoopExecIn ∷
+  Type → Type → Type → Type → Row (Type → Type) → Row (Type → Type)
+type LoopExecIn env state err a r
+  = STATE state + EXCEPT err + EFFECT + AFF +
+  ( env ∷ Reader env
+  , dt ∷ Reader Seconds
+  , end ∷ Except a
   | r )
 
+-- todo: convert the 3 type synonyms below to be open rows, for easier
+-- composition? That also allows for the `*ExecIn` types to use `Rec` directly
 -- | The execOut effects for `TemplateAffGame`
-type ExecOut e s a =
-  ( stateRef ∷ READER (Ref s)
-  , env      ∷ READER e
-  , end      ∷ EXCEPT a
-  , effect   ∷ EFFECT
-  , aff      ∷ AFF
+type ExecOut ∷ Type → Type → Type → Type → Row (Type → Type)
+type ExecOut env state err a
+  = EFFECT + AFF + EXCEPT err +
+  ( stateRef ∷ Reader (Ref state)
+  , env ∷ Reader env
+  , end ∷ Except a
   )
 
 -- | The effects in an interpreted `TemplateAffGame`
-type Interpreted e s =
-  ( stateRef ∷ READER (Ref s)
-  , env      ∷ READER e
-  , effect   ∷ EFFECT
-  , aff      ∷ AFF
+type Interpreted ∷ Type → Type → Type → Row (Type → Type)
+type Interpreted env state err
+  = EFFECT + AFF + EXCEPT err +
+  ( stateRef ∷ Reader (Ref state)
+  , env ∷ Reader env
   )
 
--- | The `effect` and `aff` effects are required to be supported by
+-- | The `effect`, `aff` and `except` effects are required to be supported by
 -- | every `AffGameUpdate`. Reducers for `AffGame` can interpret the extra
 -- | effects in terms of them.
-type Req = (effect ∷ EFFECT, aff ∷ AFF)
+type Req ∷ Type → Row (Type → Type)
+type Req err = (EFFECT + AFF + EXCEPT err + ())
 
 
--- | An `AffGame` is an `Aff` that takes a `Reducer` as an argument. Can be
--- | constructed from a `TemplateAffGame` using `mkAffGame`.
-newtype AffGame extra a = AffGame (Reducer extra Req → Aff a)
+-- | An `AffGame` is a transformer stack consisting of a reader for a `Reducer`,
+-- | an except for errors, and an aff. Can be constructed from a
+-- | `TemplateAffGame` using `mkAffGame`, or using `simpleAffGame`.
+newtype AffGame extra err a = AffGame
+  (ReaderT (Reducer extra (Req err)) (ExceptT err Aff) a)
 
-derive instance newtypeAffGame ∷ Newtype (AffGame extra a) _
+-- | Can't have a `NewType` instance because of
+-- | https://github.com/purescript/purescript/issues/4101. So there is provided
+-- | a manual deconstructor
+unAffGame ∷
+  ∀ extra err a
+  . AffGame extra err a
+  → ReaderT (Reducer extra (Req err)) (ExceptT err Aff) a
+unAffGame (AffGame game) = game
 
-derive instance functorAffGame ∷ Functor (AffGame extra)
+-- No newtype instance, so we need to define all instances manually.
+-- at least we don't need to name the instances anymore, thanks Jordan :)
 
-instance applyAffGame ∷ Apply (AffGame extra) where
-  apply (AffGame f) (AffGame a) = AffGame \r → (f r <*> a r)
+-- derive instance Newtype (AffGame extra err a) _
+instance Functor (AffGame extra err) where
+  map f (AffGame a) = AffGame (f <$> a)
 
-instance applicativeAffGame ∷ Applicative (AffGame extra) where
-  pure x = liftAff (pure x)
+instance Apply (AffGame extra err) where
+  apply (AffGame f) (AffGame a) = AffGame (f <*> a)
 
-instance bindAffGame ∷ Bind (AffGame extra) where
-  bind (AffGame a) f = AffGame \r → (a r >>= f >>> runGameAff r)
+instance Applicative (AffGame extra err) where
+  pure x = AffGame (pure x)
 
-instance monadAffGame ∷ Monad (AffGame extra)
+instance Bind (AffGame extra err) where
+  bind (AffGame a) f = AffGame $ a >>= (f >>> unAffGame)
 
-instance monadEffectAffGame ∷ MonadEffect (AffGame extra) where
-  liftEffect a = liftAff (liftEffect a)
+instance Monad (AffGame extra err)
 
-instance monadAffAffGame ∷ MonadAff (AffGame extra) where
-  liftAff a = AffGame \_ → a
+instance MonadEffect (AffGame extra err) where
+  liftEffect = AffGame <<< liftEffect
 
-instance monadRecAffGame ∷ MonadRec (AffGame extra) where
-  tailRecM f a = AffGame \r → tailRecM (\a' → runGameAff r (f a')) a
+instance MonadAff (AffGame extra err) where
+  liftAff = AffGame <<< liftAff
 
-instance monadThrowAffGame ∷ MonadThrow Error (AffGame extra) where
-  throwError e = liftAff (throwError e)
+instance MonadRec (AffGame extra err) where
+  tailRecM f a = AffGame $ tailRecM (unAffGame <<< f) a
 
-instance monadErrorAffGame ∷ MonadError Error (AffGame extra) where
-  catchError (AffGame a) f = AffGame \r → catchError (a r) (f >>> runGameAff r)
+instance MonadThrow err (AffGame extra err) where
+  throwError e = AffGame (throwError e)
 
-instance monadForkAffGame ∷ MonadFork Fiber (AffGame extra) where
-  suspend (AffGame a) = AffGame \r → suspend (a r)
-  fork    (AffGame a) = AffGame \r → fork    (a r)
-  join    fiber       = liftAff (join fiber)
+instance MonadError err (AffGame extra err) where
+  catchError (AffGame a) f = AffGame $ catchError a (f >>> unAffGame)
 
-instance monadKillAffGame ∷ MonadKill Error Fiber (AffGame extra) where
-  kill error fiber = liftAff (kill error fiber)
+instance MonadAsk (Reducer extra (Req err)) (AffGame extra err) where
+  ask = AffGame ask
+  
+-- | Can't have a `MonadReader` instance because of
+-- | https://github.com/purescript/purescript/issues/4101. So there is provided
+-- | a manual `local`.
+-- derive newtype instance MonadReader (Reducer extra (Req err)) (AffGame extra err)
+local ∷
+  ∀ extra err a
+  . (Reducer extra (Req err) → Reducer extra (Req err))
+  → AffGame extra err a
+  → AffGame extra err a
+local f (AffGame a) = AffGame $ MR.local f a
 
-instance monadBracketAffGame ∷ MonadBracket Error Fiber (AffGame extra) where
-  bracket (AffGame acquire) release run = AffGame \r →
-    bracket (acquire r)
-      (\c a → runGameAff r (release c a))
-      (\a → runGameAff r (run a))
-  uninterruptible k = AffGame \r ->
-    uninterruptible (runGameAff r k)
-  never = liftAff never
+instance Semigroup err ⇒ Alt (AffGame extra err) where
+  alt (AffGame a) (AffGame b) = AffGame (alt a b)
 
-instance altAffGame ∷ Alt (AffGame extra) where
-  alt (AffGame a) (AffGame b) = AffGame \r → a r <|> b r
+instance Monoid err ⇒ Plus (AffGame extra err) where
+  empty = AffGame empty
 
-instance plusAffGame ∷ Plus (AffGame extra) where
-  empty = liftAff empty
+instance Parallel (ParAffGame extra err) (AffGame extra err) where
+  sequential =
+    ( coerce ∷ ∀ a
+      . ParAffGame extra err a
+      → ((Reducer extra (Req err)) → ParAff (Either err a))
+    ) >>>
+    ( compose sequential ∷ ∀ a
+      . ((Reducer extra (Req err)) → ParAff (Either err a))
+      → ((Reducer extra (Req err)) → Aff (Either err a))
+    ) >>>
+    ( coerce ∷ ∀ a
+      . ((Reducer extra (Req err)) → Aff (Either err a))
+      → AffGame extra err a
+    )
+  parallel =
+    ( coerce ∷ ∀ a
+      . AffGame extra err a
+      → ((Reducer extra (Req err)) → Aff (Either err a))
+    ) >>>
+    ( compose parallel ∷ ∀ a
+      . ((Reducer extra (Req err)) → Aff (Either err a))
+      → ((Reducer extra (Req err)) → ParAff (Either err a))
+    ) >>>
+    ( coerce ∷ ∀ a
+      . ((Reducer extra (Req err)) → ParAff (Either err a))
+      → ParAffGame extra err a
+    )
 
-instance semigroupAffGame ∷ Semigroup a ⇒ Semigroup (AffGame extra a) where
+instance Semigroup a ⇒ Semigroup (AffGame extra err a) where
   append = lift2 append
 
-instance monoidAffGame ∷ Monoid a ⇒ Monoid (AffGame extra a) where
-  mempty = pure mempty
+instance Monoid a ⇒ Monoid (AffGame extra err a) where
+  mempty = AffGame mempty
 
-instance lazyAffGame ∷ Lazy (AffGame extra a) where
-  defer f = pure unit >>= f
+instance Lazy (AffGame extra err a) where
+  defer f = AffGame <<< ReaderT $
+    \reducer → (runReaderT <<< unAffGame) (f unit) reducer
 
-instance parallelAffGame ∷ Parallel (ParAffGame extra) (AffGame extra) where
-  parallel = over AffGame (map parallel)
-  sequential = over ParAffGame (map sequential)
 
 -- | A variant of `AffGame` that composes effects in parallel
-newtype ParAffGame extra a = ParAffGame (Reducer extra Req → ParAff a)
+newtype ParAffGame extra err a = ParAffGame
+  (ReaderT (Reducer extra (Req err)) (Compose ParAff (Either err)) a)
 
-derive instance newtypeParAffGame ∷ Newtype (ParAffGame extra a) _
+-- | Can't have a `NewType` instance because of
+-- | https://github.com/purescript/purescript/issues/4101. So there is provided
+-- | a manual deconstructor
+unParAffGame ∷
+  ∀ extra err a
+  . ParAffGame extra err a
+  → ReaderT (Reducer extra (Req err)) (Compose ParAff (Either err)) a
+unParAffGame (ParAffGame game) = game
 
-derive instance functorParAffGame ∷ Functor (ParAffGame extra)
+-- derive instance Newtype (ParAffGame extra err a) _
 
-instance applyParAffGame ∷ Apply (ParAffGame extra) where
-  apply (ParAffGame a) (ParAffGame b) = ParAffGame \r → a r <*> b r
+instance Functor (ParAffGame extra err) where
+  map f (ParAffGame a) = ParAffGame (f <$> a)
 
-instance applicativeParAffGame ∷ Applicative (ParAffGame extra) where
-  pure x = ParAffGame \_ → pure x
+instance Apply (ParAffGame extra err) where
+  apply (ParAffGame f) (ParAffGame a) = ParAffGame (f <*> a)
 
-instance altParAffGame ∷ Alt (ParAffGame extra) where
-  alt (ParAffGame a) (ParAffGame b) = ParAffGame \r → a r <|> b r
+instance Applicative (ParAffGame extra err) where
+  pure x = ParAffGame (pure x)
 
-instance plusParAffGame ∷ Plus (ParAffGame extra) where
-  empty = ParAffGame \_ → empty
+instance Alt (ParAffGame extra err) where
+  alt (ParAffGame a) (ParAffGame b) = ParAffGame (alt a b)
 
-instance semigroupParAffGame ∷ Semigroup a ⇒ Semigroup (ParAffGame extra a)
-  where
-    append = lift2 append
+instance Plus (ParAffGame extra err) where
+  empty = ParAffGame empty
 
-instance monoidParAffGame ∷ Monoid a ⇒ Monoid (ParAffGame extra a) where
-  mempty = pure mempty
+instance Semigroup a ⇒ Semigroup (ParAffGame extra err a) where
+  append = lift2 append
 
+instance Monoid a ⇒ Monoid (ParAffGame extra err a) where
+  mempty = ParAffGame mempty
+
+instance Lazy (ParAffGame extra err a) where
+  defer f = ParAffGame <<< ReaderT $
+    \reducer → (runReaderT <<< unParAffGame) (f unit) reducer
 
 -- | Construct a simple `AffGame` using a `Run` whose effect row includes the
 -- | `AffGame`'s `extra` row
 simpleAffGame ∷
-  ∀ extra a. Run (effect ∷ EFFECT, aff ∷ AFF | extra) a → AffGame extra a
-simpleAffGame game = AffGame \reducer → game
-  # runReducer reducer
-  # runBaseAff'
+  ∀ extra err a
+  . Run (EFFECT + AFF + EXCEPT err + extra) a
+  → AffGame extra err a
+simpleAffGame simpleGame = do
+  reducer ← ask
+  simpleGame
+    # runReducer reducer
+    # runExcept
+    # runBaseAff'
+    # liftAff
+    # (=<<) (either MonadThrow.throwError pure)
 
-type AffGameUpdate extra e s a =
-  GameUpdate extra Req (ExecOut e s a) Unit
+type AffGameUpdateM extra env state err a b =
+  GameUpdate extra (Req err) (ExecOut env state err a) b
 
-type TemplateAffGame extra e s a =
-  { init    ∷ Run (effect ∷ EFFECT, aff ∷ AFF) { env ∷ e, initState ∷ s }
-  , updates ∷ Array (AffGameUpdate extra e s a)
+-- todo: maybe instead of having updates return Unit, have them return Void
+type AffGameUpdate extra env state err a =
+  AffGameUpdateM extra env state err a Unit
+
+-- todo: env and initState should be in the top-level record
+type TemplateAffGame extra env state err a =
+  { init ∷ Run (Req err) { env ∷ env, initState ∷ state }
+  , updates ∷ Array (AffGameUpdate extra env state err a)
   }
 
-interpretAffGame ∷ ∀ e s a. Run (ExecOut e s a) Unit → Run (Interpreted e s) a
+interpretedAffGameToAff ∷
+  ∀ env state err a
+  . env
+  → Ref state
+  → Run (Interpreted env state err) a
+  → Aff (Either err a)
+interpretedAffGameToAff env stateRef
+  =   runReaderAt _env env
+  >>> runReaderAt _stateRef stateRef
+  >>> runExcept
+  >>> runBaseAff'
+
+interpretAffGame ∷
+  ∀ env state err a
+  . Run (ExecOut env state err a) Unit
+  → Run (Interpreted env state err) a
 interpretAffGame execOut = forever execOut
   # runExceptAt _end
   # map fromLeft
 
 parallelizeAffGame ∷
-  ∀ e s a. Array (Run (Interpreted e s) a) → Run (Interpreted e s) a
-parallelizeAffGame games = do
+  ∀ env state err a
+  . Array (Run (Interpreted env state err) a)
+  → Run (Interpreted env state err) a
+parallelizeAffGame updates = do
   stateRef ← askAt _stateRef
   env ← askAt _env
-  games
-    # map (   runReaderAt _stateRef stateRef
-          >>> runReaderAt _env env
-          >>> runBaseAff' )
+  updates
+    # map (interpretedAffGameToAff env stateRef)
     # parOneOfMap try
-    # (=<<) (either throwError pure)
+    # (=<<) (either MonadThrow.throwError pure)
     # Run.liftAff
+    # (=<<) (either throw pure)
 
 -- | Make an `AffGame` from a `TemplateAffGame`
 mkAffGame ∷
-  ∀ extra e s a
-  . TemplateAffGame extra e s a
-  → AffGame extra a
-mkAffGame { init, updates } = AffGame \reducer → runBaseAff' do
+  ∀ extra env state err a
+  . TemplateAffGame extra env state err a
+  → AffGame extra err a
+mkAffGame { init, updates } = AffGame do
   { env, initState } ← init
+    # runExcept
+    # runBaseAff'
+    # liftAff
+    # (=<<) (either MonadThrow.throwError pure)
+  reducer ← MonadReader.ask
   stateRef ← newRef initState
+  -- todo: maybe separate this part out into its own `run(Template)AffGame`
+  -- function. If so, interpretedAffGameToAff should probably also be exported
   mkRunGame interpretAffGame parallelizeAffGame reducer updates
-    # runReaderAt _stateRef stateRef
-    # runReaderAt _env env
+    # interpretedAffGameToAff env stateRef
+    # liftAff
+    # (=<<) (either MonadThrow.throwError pure)
 
+
+-- todo: Change up these
+-- runGame and runGameAff could be just one function that uses `MonadAff`.
+-- Maybe not if we want to include the `EXCEPT`-
+-- But they should be changed anyway
 -- | Run an `AffGame` in `Run`
 runGame ∷
-  ∀ extra a r
-  . Reducer extra Req
-  → AffGame extra a
-  → Run (aff ∷ AFF | r) a
-runGame reducer game = Run.liftAff (runGameAff reducer game)
+  ∀ extra err a r
+  . Reducer extra (Req err)
+  → AffGame extra err a
+  → Run (AFF + EXCEPT err + r) a
+runGame reducer (AffGame game) = game
+  # flip MonadReader.runReaderT reducer
+  # MonadExcept.runExceptT
+  # Run.liftAff
+  # (=<<) (either throw pure)
+
 
 -- | Run an `AffGame` in `Aff`
 runGameAff ∷
-  ∀ extra a
-  . Reducer extra Req
-  → AffGame extra a
-  → Aff a
-runGameAff reducer (AffGame game) = game reducer
+  ∀ extra err a
+  . Reducer extra (Req err)
+  → AffGame extra err a
+  → Aff (Either err a)
+runGameAff reducer game = runGame reducer game
+  # runExcept
+  # runBaseAff
 
 -- | Launch an `AffGame` in `Effect`, returning the `Fiber`.
 launchGame ∷
-  ∀ extra a
-  . Reducer extra Req
-  → AffGame extra a
-  → Effect (Fiber a)
+  ∀ extra err a
+  . Reducer extra (Req err)
+  → AffGame extra err a
+  → Effect (Fiber (Either err a))
 launchGame reducer game = launchAff do runGameAff reducer game
 
+-- todo: this should require an `AffGame` with return value `Unit` and error value `Void`.
+-- todo: there should be an easy way to handle the error and run in effect.
 -- | Launch an `AffGame` in `Effect`. Discards the result value.
 launchGame_ ∷
-  ∀ extra a
-  . Reducer extra Req
-  → AffGame extra a
+  ∀ extra err a
+  . Reducer extra (Req err)
+  → AffGame extra err a
   → Effect Unit
 launchGame_ reducer game = void do launchGame reducer game
 
 -- | An `AffGameUpdate` that runs once when the `AffGame` starts
 onStart ∷
-  ∀ extra e s a
-  . Run (OnStartExecIn e s a extra) Unit
-  → AffGameUpdate extra e s a
+  ∀ extra env state err a
+  . Run (OnStartExecIn env state err a extra) Unit
+  → AffGameUpdate extra env state err a
 onStart effect = GameUpdate \reducer → do
   stateRef ← askAt _stateRef
-  (runReducer reducer effect ∷ Run (OnStartExecIn e s a ()) Unit)
+  (runReducer reducer effect ∷ Run (OnStartExecIn env state err a ()) Unit)
     # runStateWithRef stateRef
     # expand
   Run.liftAff never
 
+-- todo: could probably rewrite this. might also change its API, it might not
+-- need a dedicated initialization function (investigate)
 -- | Create an `AffGameUpdate` that runs in loops, using the `Aff Unit` as a
 -- | waiting action inbetween
 loopUpdate ∷
-  ∀ extra e s a b
+  ∀ extra env state err a b
   . Aff Unit
-  → Run (LoopExecIn e s a extra) b
-  → (b → Run (LoopExecIn e s a extra) b)
-  → AffGameUpdate extra e s a
+  → Run (LoopExecIn env state err a extra) b
+  → (b → Run (LoopExecIn env state err a extra) b)
+  → AffGameUpdate extra env state err a
 loopUpdate wait init loop = GameUpdate \reducer → do
   stateRef ← askAt _stateRef
   let
-    init' = (runReducer reducer init ∷ Run (LoopExecIn e s a ()) b)
+    init' = (runReducer reducer init ∷ Run (LoopExecIn env state err a ()) b)
       # runReaderAt _dt (Seconds 0.0)
       # runStateWithRef stateRef
       # expand
     step { time, passThrough } = do
       now ← liftEffect nowSeconds
       passThrough' ←
-        (runReducer reducer $ loop passThrough ∷ Run (LoopExecIn e s a ()) b)
+        (runReducer reducer $ loop passThrough
+          ∷ Run (LoopExecIn env state err a ()) b
+        )
           # runReaderAt _dt (now `over2 Seconds (-)` time)
           # runStateWithRef stateRef
           # expand
@@ -332,10 +456,10 @@ loopUpdate wait init loop = GameUpdate \reducer → do
 -- | Create a simple loop update that runs the same action repeatedly, using
 -- | the `Aff Unit` as a waiting action inbetween
 loopUpdate' ∷
-  ∀ extra e s a
+  ∀ extra env state err a
   . Aff Unit
-  → Run (LoopExecIn e s a extra) Unit
-  → AffGameUpdate extra e s a
+  → Run (LoopExecIn env state err a extra) Unit
+  → AffGameUpdate extra env state err a
 loopUpdate' wait loop = loopUpdate wait (pure unit) (const loop)
 
 -- | Create a loop that on every iteration (distinguished by the `Aff Unit`)
@@ -357,23 +481,24 @@ loopUpdate' wait loop = loopUpdate wait (pure unit) (const loop)
 -- | waiting action, as it will stop updating until the tab becomes active
 -- | again).
 matchInterval ∷
-  ∀ extra e s a d
+  ∀ extra env state err a d
   . Duration d
   ⇒ Aff Unit
-  → Run (LoopExecIn e s a extra) d
-  → Run (LoopExecIn e s a extra) Unit
-  → AffGameUpdate extra e s a
+  → Run (LoopExecIn env state err a extra) d
+  → Run (LoopExecIn env state err a extra) Unit
+  → AffGameUpdate extra env state err a
 matchInterval wait duration loop = loopUpdate wait (askAt _dt) \accDt' → do
   d ← duration
   dt ← askAt _dt
-  let newAccDt = case accDt' <> dt, convertDuration d of
-        Seconds accDt, Seconds frameTime
-          | accDt < frameTime       → Left accDt
-          | frameTime <= 0.0        → Right 0.0
-          | accDt > frameTime * 3.0 → Right 0.0
-          | otherwise               → Right (accDt - frameTime)
+  let
+    newAccDt = case accDt' <> dt, convertDuration d of
+      Seconds accDt, Seconds frameTime
+        | accDt < frameTime → Left accDt
+        | frameTime <= 0.0 → Right 0.0
+        | accDt > frameTime * 3.0 → Right 0.0
+        | otherwise → Right (accDt - frameTime)
   Seconds <$> case newAccDt of
-    Left  accDt → pure accDt
+    Left accDt → pure accDt
     Right accDt → loop $> accDt
 
 
@@ -383,14 +508,14 @@ matchInterval wait duration loop = loopUpdate wait (askAt _dt) \accDt' → do
 -- | 0.0)` is `Milliseconds 0.0`.
 newtype FPS = FPS Number
 
-derive instance newtypeFPS ∷ Newtype FPS _
-derive newtype instance eqFPS ∷ Eq FPS
-derive newtype instance ordFPS ∷ Ord FPS
+derive instance Newtype FPS _
+derive newtype instance Eq FPS
+derive newtype instance Ord FPS
 
-instance showFPS ∷ Show FPS where
+instance Show FPS where
   show (FPS n) = "(FPS " <> show n <> ")"
 
-instance durationFPS ∷ Duration FPS where
+instance Duration FPS where
   fromDuration (FPS n) = Milliseconds if n == 0.0
     then 0.0
     else 1000.0 / n

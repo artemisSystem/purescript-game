@@ -16,6 +16,9 @@ module Game
 
 import Prelude
 
+import Control.Apply (lift2)
+import Data.Newtype (class Newtype)
+import Effect.Class (class MonadEffect, liftEffect)
 import Prim.Row (class Union, class Nub)
 import Run (Run)
 import Run.Unsafe (Anything)
@@ -23,19 +26,10 @@ import Type.Row (type (+))
 import Unsafe.Coerce (unsafeCoerce)
 
 
-newtype GameUpdate (extra ∷ # Type) (req ∷ # Type) (execOut ∷ # Type) a =
-  GameUpdate (Reducer extra req → Run execOut a)
+foreign import data Reducer ∷ Row (Type → Type) → Row (Type → Type) → Type
 
-runUpdate ∷
-  ∀ extra req execOut a
-  . Reducer extra req
-  → GameUpdate extra req execOut a
-  → Run execOut a
-runUpdate reducer (GameUpdate update) = update reducer
-
-
-data Reducer (extra ∷ # Type) (req ∷ # Type)
-
+-- todo: maaayyyybe we can get away with using the union typeclass for the anything part
+-- todo: maaayyyybe a way to have a more specific reducer for more customizability
 -- | Create a `Reducer`. Note: doing `mkReducer $ f` will raise an
 -- | `EscapedSkolem` error. Use parentheses or `do` instead of `$`.
 mkReducer ∷
@@ -79,12 +73,48 @@ infixl 5 composeReducer as >->
 identityReducer ∷ ∀ req. Reducer () req
 identityReducer = mkReducer identity
 
-type Game
-  (extra ∷ # Type)
-  (req ∷ # Type)
-  (execOut ∷ # Type)
-  a
-  = Array (GameUpdate extra req execOut a)
+-- todo: maybe it's possible to change it to "automatically apply the reducer"
+newtype GameUpdate ∷
+  Row (Type → Type) → Row (Type → Type) → Row (Type → Type) → Type → Type
+newtype GameUpdate extra req execOut a =
+  GameUpdate (Reducer extra req → Run execOut a)
+
+derive instance Newtype (GameUpdate extra req execOut a) _
+
+instance Functor (GameUpdate extra req execOut) where
+  map = liftM1
+
+instance Apply (GameUpdate extra req execOut) where
+  apply = ap
+ 
+instance Applicative (GameUpdate extra req execOut) where
+  pure x = GameUpdate (\_ → pure x)
+
+instance Bind (GameUpdate extra req execOut) where
+  bind (GameUpdate m) f = GameUpdate \reducer → do
+    m reducer >>= \a → case f a of GameUpdate b → b reducer
+
+instance Monad (GameUpdate extra req execOut)
+
+instance Semigroup a ⇒ Semigroup (GameUpdate extra req execOut a) where
+  append = lift2 (<>)
+
+instance Monoid a ⇒ Monoid (GameUpdate extra req execOut a) where
+  mempty = pure mempty
+
+instance MonadEffect (Run execOut) ⇒ MonadEffect (GameUpdate extra req execOut) where
+  liftEffect f = GameUpdate \_ → liftEffect f
+
+runUpdate ∷
+  ∀ extra req execOut a
+  . Reducer extra req
+  → GameUpdate extra req execOut a
+  → Run execOut a
+runUpdate reducer (GameUpdate update) = update reducer
+
+type Game ∷
+  Row (Type → Type) → Row (Type → Type) → Row (Type → Type) → Type → Type
+type Game extra req execOut a = Array (GameUpdate extra req execOut a)
 
 -- | Make a function that can run a `Game` in `Run`
 mkRunGame ∷

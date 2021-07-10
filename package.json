@@ -1,17 +1,22 @@
 {
   "private": true,
   "scripts": {
-    "test": "npx spago -x dev.dhall test",
+    "build": "npx spago build",
     "repl": "npx spago -x dev.dhall repl",
-    "example-AffGame": "npx spago -x dev.dhall build && (npx parcel serve --open -p 1337 --out-dir dev test/Test/AffGame/index.html & npx spago -x dev.dhall build --watch)",
-    "example-Event": "npx spago -x dev.dhall build && (npx parcel serve --open -p 1337 --out-dir dev test/Test/Event/index.html & npx spago -x dev.dhall build --watch)"
+    "serve-webExample": "npx parcel serve --open --dist-dir dev examples/Example/$npm_config_module/index.html",
+    "watch-examples": "npx spago -x dev.dhall build --watch",
+    "webExample": "npx spago -x dev.dhall build && npx concurrently -k -n 'parcel,spago' -c 'green,blue' npm:serve-webExample npm:watch-examples",
+    "nodeExample": "npx spago -x dev.dhall run --watch -m Example.$npm_config_module.Main",
+    "example:Game": "npm run nodeExample --module=Game",
+    "example:AffGame": "npm run webExample --module=AffGame"
   },
   "devDependencies": {
-    "bower": "^1.8.8",
-    "parcel": "^1.12.4",
+    "bower": "^1.8.12",
+    "concurrently": "^6.1.0",
+    "parcel": "^2.0.0-beta.2",
     "pscid": "^2.9.3",
     "pulp": "^15.0.0",
-    "purescript": "^0.13.8",
-    "spago": "^0.17.0"
+    "purescript": "^0.14.2",
+    "spago": "^0.20.3"
   }
 }

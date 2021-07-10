@@ -116,41 +116,41 @@ let additions =
   }
 -------------------------------
 -}
-
-
 let upstream =
-      https://github.com/purescript/package-sets/releases/download/psc-0.13.8-20200708/packages.dhall sha256:df5b0f1ae92d4401404344f4fb2a7a3089612c9f30066dcddf9eaea4fe780e29
+  https://github.com/purescript/package-sets/releases/download/psc-0.14.1-20210516/packages.dhall sha256:f5e978371d4cdc4b916add9011021509c8d869f4c3f6d0d2694c0e03a85046c8
 
 let overrides = {=}
 
 let additions =
-      { canvas-action =
-        { dependencies =
-          [ "free"
-          , "exceptions"
-          , "newtype"
-          , "effect"
-          , "maybe"
-          , "web-html"
-          , "foldable-traversable"
-          , "polymorphic-vectors"
-          , "prelude"
-          , "transformers"
-          , "canvas"
-          , "math"
-          , "tuples"
-          , "partial"
-          , "colors"
-          , "lists"
-          ]
-        , repo = "https://github.com/3ddyy/purescript-canvas-action.git"
-        , version = "v4.0.1"
-        }
-      , polymorphic-vectors =
-        { dependencies = [ "prelude", "canvas", "math" ]
-        , repo = "https://github.com/3ddyy/purescript-polymorphic-vectors.git"
-        , version = "v1.1.1"
-        }
-      }
+  { canvas-action =
+    { dependencies =
+      [ "aff"
+      , "arrays"
+      , "canvas"
+      , "colors"
+      , "effect"
+      , "either"
+      , "exceptions"
+      , "foldable-traversable"
+      , "math"
+      , "maybe"
+      , "numbers"
+      , "polymorphic-vectors"
+      , "prelude"
+      , "refs"
+      , "run"
+      , "transformers"
+      , "tuples"
+      , "type-equality"
+      , "typelevel-prelude"
+      , "unsafe-coerce"
+      , "web-dom"
+      , "web-events"
+      , "web-html"
+      ]
+    , repo = "https://github.com/artemisSystem/purescript-canvas-action.git"
+    , version = "v7.0.0"
+    }
+  }
 
 in  upstream // overrides // additions

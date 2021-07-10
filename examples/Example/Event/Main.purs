@@ -1,5 +1,5 @@
-module Test.Event.Main where
-
+module Example.Event.Main where
+{-}
 import Prelude
 
 import Data.Foldable (oneOfMap)
@@ -36,8 +36,8 @@ game = mkAffGame
   { init: runMaybe "Buttons missing from HTML" ado
       button1 ← getButton "#button1"
       button2 ← getButton "#button2"
-      in { env:       { button1, button2 } ∷ Env
-         , initState: 0                    ∷ State
+      in { env: { button1, button2 } ∷ Env
+         , initState: 0 ∷ State
          }
   , updates:
     [ click (oneOfMap (asksAt _env) [_.button1, _.button2]) do

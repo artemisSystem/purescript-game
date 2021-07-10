@@ -1,4 +1,4 @@
-module Test.Main where
+module Example.Game.Main where
 
 import Prelude
 
@@ -9,19 +9,22 @@ import Data.Tuple (snd)
 import Effect (Effect)
 import Effect.Class.Console (log)
 import Game (Game, GameUpdate(..), Reducer, identityReducer, mkReducer, mkRunGame, runReducer)
-import Run (EFFECT, Run, SProxy(..), interpret, match, runBaseEffect)
-import Run.Reader (READER, askAt, runReaderAt)
+import Run (EFFECT, Run, interpret, match, runBaseEffect)
+import Run.Reader (Reader, askAt, runReaderAt)
 import Run.State (STATE, evalStateAt, _state, get, modify, put)
 import Run.Writer (WRITER, Writer(..), foldWriterAt, tell, tellAt)
+import Type.Proxy (Proxy(..))
+import Type.Row (type (+))
 
-type ExecOut = (writer ∷ WRITER String)
+type ExecOut = WRITER String + ()
 
+type Req ∷ Row (Type → Type)
 type Req = ()
 
-type Interpreted = (effect ∷ EFFECT)
+type Interpreted = EFFECT + ()
 
-_end ∷ SProxy "end"
-_end = SProxy
+_end ∷ Proxy "end"
+_end = Proxy
 
 interpretGame ∷ ∀ a. Run ExecOut a → Run Interpreted a
 interpretGame execOut = execOut
@@ -40,10 +43,10 @@ runGame ∷
 runGame = mkRunGame interpretGame parallelize
 
 
-type Read5In r = (writer ∷ WRITER String, five ∷ READER Int | r)
+type Read5In r = WRITER String + (five ∷ Reader Int | r)
 
-_five ∷ SProxy "five"
-_five = SProxy
+_five ∷ Proxy "five"
+_five = Proxy
 
 read5Update ∷
   ∀ extra a
@@ -52,11 +55,8 @@ read5Update ∷
 read5Update update = GameUpdate \reducer →
   runReaderAt _five 5 (runReducer reducer update)
 
-type StateIn r = (writer ∷ WRITER String, state ∷ STATE Int | r)
+type StateIn r = WRITER String + STATE Int + r
 
--- TODO: for docs: mention that using `Union` is generally janky, and that
--- support for the `extra` effects should be baked in to the type with the
--- effects the update supports.
 stateUpdate ∷
   ∀ extra a
   . Run (StateIn extra) a
@@ -65,10 +65,10 @@ stateUpdate update = GameUpdate \reducer →
   evalStateAt _state 26 (runReducer reducer update)
 
 
-type Extra1 = (six ∷ READER Int)
+type Extra1 = (six ∷ Reader Int)
 
-_six ∷ SProxy "six"
-_six = SProxy
+_six ∷ Proxy "six"
+_six = Proxy
 
 game1 ∷ Game Extra1 Req ExecOut String
 game1 =
@@ -91,10 +91,10 @@ game1 =
   ]
 
 
-type Extra2 = (void ∷ WRITER String)
+type Extra2 = (void ∷ Writer String)
 
-_void ∷ SProxy "void"
-_void = SProxy
+_void ∷ Proxy "void"
+_void = Proxy
 
 game2 ∷ Game Extra2 Req ExecOut (Additive Int)
 game2 =
@@ -127,6 +127,7 @@ game3 =
       tell (show $ five * five)
   ]
 
+-- todo: move these reducers next to the `ExtraX` definitions
 main ∷ Effect Unit
 main = runBaseEffect do
   result1 ← runGame (mkReducer do runReaderAt _six 6) game1

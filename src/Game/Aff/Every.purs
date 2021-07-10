@@ -14,7 +14,9 @@ delay d = Aff.delay (fromDuration d)
 
 -- | An `AffGameUpdate` that runs its update at the specified interval
 everyUpdate ∷
-  ∀ extra e s a d
+  ∀ extra env state err a d
   . Duration d
-  ⇒ d → Run (LoopExecIn e s a extra) Unit → AffGameUpdate extra e s a
+  ⇒ d
+  → Run (LoopExecIn env state err a extra) Unit
+  → AffGameUpdate extra env state err a
 everyUpdate d = loopUpdate' (delay d)

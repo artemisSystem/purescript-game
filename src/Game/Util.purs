@@ -7,18 +7,16 @@ import Data.Either (Either, either)
 import Data.Maybe (Maybe, maybe)
 import Data.Newtype (un)
 import Data.Time.Duration (class Duration, Seconds, fromDuration, toDuration)
-import Data.Symbol (class IsSymbol)
 import Data.Tuple (Tuple(..))
-import Effect.Now (now)
 import Effect.Aff (Milliseconds(..))
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Exception (throw)
+import Effect.Now (now)
 import Effect.Ref (Ref)
 import Effect.Ref (new, read, write, modify, modify', modify_) as R
-import Run (Run, EFFECT, SProxy)
+import Run (Run, EFFECT)
 import Run.State (STATE, runState)
-import Run.Reader (READER, askAt)
-import Type.Row (class Cons)
+import Type.Row (type (+))
 
 
 
@@ -47,6 +45,7 @@ durationToNumber = fromDuration >>> un Milliseconds
 nowSeconds ∷ ∀ m. MonadEffect m ⇒ m Seconds
 nowSeconds = liftEffect $ now <#> (unInstant >>> toDuration)
 
+-- todo: change this to not take a monadic value as initializer
 iterateM ∷ ∀ m a b. Monad m ⇒ (a → m a) → m a → m b
 iterateM f ma = ma >>= (f >>> iterateM f)
 
@@ -59,16 +58,9 @@ fromLeft = either identity absurd
 maybeThrow ∷ ∀ m a. MonadEffect m ⇒ String → Maybe a → m a
 maybeThrow error = maybe (liftEffect $ throw error) pure
 
-runStateWithRef ∷
-  ∀ r s
-  . Ref s
-  → Run (effect ∷ EFFECT, state ∷ STATE s | r) ~> Run (effect ∷ EFFECT | r)
+runStateWithRef ∷ ∀ r s. Ref s → Run (EFFECT + STATE s + r) ~> Run (EFFECT + r)
 runStateWithRef ref run = do
   init ← readRef ref
   (Tuple s a) ← runState init run
   writeRef s ref
   pure a
-
-asksAt ∷
-  ∀ a e s r t. IsSymbol s ⇒ Cons s (READER e) t r ⇒ SProxy s → (e → a) → Run r a
-asksAt sym f = f <$> askAt sym

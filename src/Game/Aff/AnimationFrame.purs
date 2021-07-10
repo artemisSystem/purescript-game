@@ -19,8 +19,10 @@ delayFrame' w = makeAff \cb → do
     W.cancelAnimationFrame id w
 
 animationFrameUpdate' ∷
-  ∀ extra e s a
-  . Window → Run (LoopExecIn e s a extra) Unit → AffGameUpdate extra e s a
+  ∀ extra env state err a
+  . Window
+  → Run (LoopExecIn env state err a extra) Unit
+  → AffGameUpdate extra env state err a
 animationFrameUpdate' w update = loopUpdate' (delayFrame' w) update
 
 
@@ -28,16 +30,17 @@ delayFrame ∷ Aff Unit
 delayFrame = liftEffect W.window >>= delayFrame'
 
 animationFrameUpdate ∷
-  ∀ extra e s a
-  . Run (LoopExecIn e s a extra) Unit → AffGameUpdate extra e s a
+  ∀ extra env state err a
+  . Run (LoopExecIn env state err a extra) Unit
+  → AffGameUpdate extra env state err a
 animationFrameUpdate = loopUpdate' delayFrame
 
 -- | Uses `requestAnimationFrame` to run the given update at the given interval
--- | as accurately as possible
+-- | (`d`) as accurately as possible
 animationFrameMatchInterval ∷
-  ∀ extra e s a d
+  ∀ extra env state err a d
   . Duration d
-  ⇒ Run (LoopExecIn e s a extra) d
-  → Run (LoopExecIn e s a extra) Unit
-  → AffGameUpdate extra e s a
+  ⇒ Run (LoopExecIn env state err a extra) d
+  → Run (LoopExecIn env state err a extra) Unit
+  → AffGameUpdate extra env state err a
 animationFrameMatchInterval = matchInterval delayFrame

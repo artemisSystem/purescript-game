@@ -7,6 +7,7 @@ import Effect (Effect)
 import Game.Util.Maybe (liftBoth)
 import Run (EFFECT, Run, liftEffect)
 import Run.Except (FAIL)
+import Type.Row (type (+))
 import Web.DOM.Element (Element, fromNode)
 import Web.DOM.NodeList (NodeList, toArray)
 import Web.DOM.ParentNode (QuerySelector, querySelector, querySelectorAll)
@@ -19,14 +20,14 @@ import Web.HTML.Window (document)
 qSel ∷
   ∀ r
   . QuerySelector
-  → Run (effect ∷ EFFECT, except ∷ FAIL | r) Element
+  → Run (EFFECT + FAIL + r) Element
 qSel sel = liftBoth do
   doc ← window >>= document <#> toParentNode
   querySelector sel doc
 
 -- | `querySelectorAll` without having to supply a `ParentNode`, using the
 -- | document as parent node.
-qSelAll ∷ ∀ r. QuerySelector → Run (effect ∷ EFFECT | r) (Array Element)
+qSelAll ∷ ∀ r. QuerySelector → Run (EFFECT + r) (Array Element)
 qSelAll sel = liftEffect do
   doc ← window >>= document <#> toParentNode
   querySelectorAll sel doc >>= nodeListToElems

@@ -1,4 +1,5 @@
 module Game.Aff.Web.Event
+where {-}
   ( qSelEventTarget
   , windowEventTarget
   , documentEventTarget
@@ -41,8 +42,8 @@ import Prelude
 
 import Control.Monad.Error.Class (throwError)
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
 import Data.Int (round)
+import Data.Maybe (Maybe(..))
 import Data.Traversable (for_, traverse_)
 import Data.Vector.Polymorphic (Vector2, (><))
 import Effect.Aff (effectCanceler, makeAff, runAff_)
@@ -51,43 +52,44 @@ import Game.Aff (AffGameUpdate, _end, _env, _stateRef)
 import Game.Aff.Web.Util (qSel)
 import Game.Util (maybeThrow, newRef, readRef, runStateWithRef, writeRef)
 import Game.Util.Maybe (liftBoth)
-import Run (AFF, EFFECT, Run, SProxy(..), expand, liftAff, liftEffect, runBaseAff')
+import Run (AFF, EFFECT, Run, expand, liftAff, liftEffect, runBaseAff')
 import Run.Choose (CHOOSE, runChoose)
-import Run.Except (EXCEPT, FAIL, runExceptAt, throwAt)
-import Run.Reader (READER, askAt, runReaderAt)
+import Run.Except (EXCEPT, Except, FAIL, runExceptAt, throwAt)
+import Run.Reader (READER, Reader, askAt, runReaderAt)
 import Run.State (STATE, execState)
+import Type.Proxy (Proxy(..))
+import Type.Row (type (+))
 import Web.DOM.Element (toEventTarget) as Element
 import Web.DOM.ParentNode (QuerySelector)
 import Web.Event.Event (Event, EventType(..))
 import Web.Event.Event (currentTarget) as Event
 import Web.Event.EventTarget (EventTarget, addEventListener, eventListener, removeEventListener)
 import Web.HTML (window)
-import Web.HTML.Window (document)
-import Web.HTML.Window (toEventTarget) as Window
-import Web.HTML.HTMLElement (toEventTarget, getBoundingClientRect, fromEventTarget) as HTMLElement
 import Web.HTML.HTMLDocument (body)
 import Web.HTML.HTMLDocument (toEventTarget) as HTMLDocument
-import Web.UIEvent.UIEvent (UIEvent)
-import Web.UIEvent.UIEvent as UIEvent
-import Web.UIEvent.MouseEvent (MouseEvent)
-import Web.UIEvent.MouseEvent as MouseEvent
+import Web.HTML.HTMLElement (toEventTarget, getBoundingClientRect, fromEventTarget) as HTMLElement
+import Web.HTML.Window (document)
+import Web.HTML.Window (toEventTarget) as Window
 import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KeyboardEvent
+import Web.UIEvent.MouseEvent (MouseEvent)
+import Web.UIEvent.MouseEvent as MouseEvent
+import Web.UIEvent.UIEvent (UIEvent)
+import Web.UIEvent.UIEvent as UIEvent
 
 
 qSelEventTarget ∷
-  ∀ r. QuerySelector → Run (effect ∷ EFFECT, except ∷ FAIL | r) EventTarget
+  ∀ r. QuerySelector → Run (EFFECT + FAIL + r) EventTarget
 qSelEventTarget sel = qSel sel <#> Element.toEventTarget
 
-windowEventTarget ∷ ∀ r. Run (effect ∷ EFFECT | r) EventTarget
+windowEventTarget ∷ ∀ r. Run (EFFECT + r) EventTarget
 windowEventTarget = liftEffect do window <#> Window.toEventTarget
 
-documentEventTarget ∷ ∀ r. Run (effect ∷ EFFECT | r) EventTarget
+documentEventTarget ∷ ∀ r. Run (EFFECT + r) EventTarget
 documentEventTarget = liftEffect do
   window >>= document <#> HTMLDocument.toEventTarget
 
-bodyEventTarget ∷
-  ∀ r. Run (effect ∷ EFFECT, except ∷ FAIL | r) EventTarget
+bodyEventTarget ∷ ∀ r. Run (EFFECT + FAIL + r) EventTarget
 bodyEventTarget = liftBoth do
   window >>= document >>= body <#> map HTMLElement.toEventTarget
 
@@ -97,33 +99,31 @@ type EventInfo =
   , useCapture ∷ Boolean
   }
 
-type EventExecIn e s a r =
-  ( state  ∷ STATE s
-  , env    ∷ READER e
-  , end    ∷ EXCEPT a
-  , event  ∷ READER Event
-  , effect ∷ EFFECT
-  , aff    ∷ AFF
+type EventExecIn env state err a r =
+  STATE state + EFFECT + AFF + EXCEPT err +
+  ( env ∷ Reader env
+  , event ∷ Reader Event
+  , end ∷ Except a
   | r )
 
-type EventTargetRow e s a =
-  ( state  ∷ STATE s
-  , env    ∷ READER e
-  , end    ∷ EXCEPT a
-  , effect ∷ EFFECT
-  , aff    ∷ AFF
-  , choose ∷ CHOOSE
+-- todo: rename to `GetEventTarget`?
+type EventTargetRow env state err a =
+  STATE state + EFFECT + AFF + EXCEPT err + CHOOSE +
+  ( env ∷ Reader env
+  , end ∷ Except a
   )
 
-_event ∷ SProxy "event"
-_event = SProxy
+_event ∷ Proxy "event"
+_event = Proxy
 
 eventUpdate ∷
-  ∀ e s a extra
+  ∀ env state err a extra
   . EventInfo
-  → Run (EventTargetRow e s a) EventTarget
-  → Run (EventExecIn e s a extra) Unit
-  → AffGameUpdate extra e s a
+  → Run (EventTargetRow env state err a) EventTarget
+  → Run (EventExecIn env state err a extra) Unit
+  → AffGameUpdate extra env state err a
+-- eventUpdate { eventType, useCapture } eventTargetsM update = do
+--   targets ← getTargets
 eventUpdate { eventType, useCapture } targets update =
   GameUpdate \reducer → do
     stateRef ← askAt _stateRef
@@ -134,17 +134,20 @@ eventUpdate { eventType, useCapture } targets update =
       # expand
     result ← liftAff $ makeAff \cb → do
       listenerRef ← newRef Nothing
-      let canceler = readRef listenerRef >>= traverse_ \l →
-            for_ targetArray do removeEventListener eventType l useCapture
+      let
+        canceler = readRef listenerRef >>= traverse_ \l →
+          for_ targetArray do removeEventListener eventType l useCapture
       listener ← eventListener \event → do
         state ← readRef stateRef
-        (runReducer reducer update ∷ Run (EventExecIn e s a ()) Unit)
+        (runReducer reducer update ∷ Run (EventExecIn env state err a ()) Unit)
           # runReaderAt _event event
           # runReaderAt _env env
           # execState state
           # runExceptAt _end
           # runBaseAff'
           # runAff_ case _ of
+          -- todo: i think this can be written nicer. all the handling might not
+          -- need to be deferred until the end
               Right (Right newState) → writeRef newState stateRef
               Right (Left  end     ) → canceler *> cb (Right end)
               Left         error     → throwError error

@@ -14,82 +14,92 @@ module Game.Aff.Run
 import Prelude
 
 import Data.Symbol (class IsSymbol)
+import Effect (Effect)
+import Effect.Aff (Aff)
 import Effect.Aff.Class as Aff
 import Effect.Class as Effect
 import Game.Aff (AffGame, Reducer, Req, runGameAff)
 import Prim.Row as Row
-import Run (AFF, EFFECT, FProxy, Run, SProxy(..), case_, interpret, lift, on, run, send)
+import Run (EFFECT, Run, AFF, case_, interpret, lift, on, run, send)
+import Run.Except (EXCEPT, Except, _except, rethrowAt)
+import Type.Proxy (Proxy(..))
+import Type.Row (type (+))
 
-type AFFGAME extra = FProxy (AffGame extra)
+type AFFGAME extra err r = (affGame ∷ AffGame extra err | r)
 
-_affGame ∷ SProxy "affGame"
-_affGame = SProxy
+_affGame ∷ Proxy "affGame"
+_affGame = Proxy
 
-liftAffGame ∷ ∀ extra a r. AffGame extra a → Run (affGame ∷ AFFGAME extra | r) a
+liftAffGame ∷ ∀ extra err a r. AffGame extra err a → Run (AFFGAME extra err + r) a
 liftAffGame = liftAffGameAt _affGame
 
 liftAffGameAt ∷
-  ∀ t extra a r s
+  ∀ t extra err a r s
   . IsSymbol s
-  ⇒ Row.Cons s (AFFGAME extra) t r
-  ⇒ SProxy s
-  → AffGame extra a
+  ⇒ Row.Cons s (AffGame extra err) t r
+  ⇒ Proxy s
+  → AffGame extra err a
   → Run r a
 liftAffGameAt = lift
 
 runAffGame ∷
-  ∀ extra r
-  . Reducer extra Req
-  → Run (aff ∷ AFF, affGame ∷ AFFGAME extra | r) ~> Run (aff ∷ AFF | r)
-runAffGame = runAffGameAt (SProxy ∷ _ "aff") _affGame
+  ∀ extra err r
+  . Reducer extra (Req err)
+  → Run (AFF + EXCEPT err + AFFGAME extra err + r) ~> Run (AFF + EXCEPT err + r)
+runAffGame = runAffGameAt (Proxy ∷ _ "aff") _except _affGame
 
 runAffGameAt ∷
-  ∀ aff affGame extra r0 r1 r2
+  ∀ aff except affGame extra err ra rb r1 r2
   . IsSymbol aff
+  ⇒ IsSymbol except
   ⇒ IsSymbol affGame
-  ⇒ Row.Cons aff AFF r0 r1
-  ⇒ Row.Cons affGame (AFFGAME extra) r1 r2
-  ⇒ SProxy aff
-  → SProxy affGame
-  → Reducer extra Req
+  ⇒ Row.Cons aff Aff ra r1
+  ⇒ Row.Cons except (Except err) rb r1
+  ⇒ Row.Cons affGame (AffGame extra err) r1 r2
+  ⇒ Proxy aff
+  → Proxy except
+  → Proxy affGame
+  → Reducer extra (Req err)
   → Run r2 ~> Run r1
-runAffGameAt aff affGame reducer = interpret
-  (on affGame (runGameAff reducer >>> lift aff) send)
+runAffGameAt aff except affGame reducer = interpret
+  (on affGame
+    (runGameAff reducer >>> lift aff >=> rethrowAt except)
+    send)
 
 -- | Runs a base `AffGame` effect
-runBaseAffGame ∷ ∀ extra. Run (affGame ∷ AFFGAME extra) ~> AffGame extra
+runBaseAffGame ∷ ∀ extra err. Run (AFFGAME extra err + ()) ~> AffGame extra err
 runBaseAffGame = runBaseAffGameAt _affGame
 
 -- | Runs a base `AffGame` effect at the provided label
 runBaseAffGameAt ∷
-  ∀ extra s r
-  . IsSymbol s ⇒ Row.Cons s (AFFGAME extra) () r
-  ⇒ SProxy s → Run r ~> AffGame extra
+  ∀ extra err s r
+  . IsSymbol s ⇒ Row.Cons s (AffGame extra err) () r
+  ⇒ Proxy s → Run r ~> AffGame extra err
 runBaseAffGameAt p = run (case_ # on p identity)
 
 -- | Runs base `AffGame`, `Aff` and `Effect` together as one effect
 runBaseAffGame' ∷
-  ∀ extra
-  . Run (effect ∷ EFFECT, aff ∷ AFF, affGame ∷ AFFGAME extra) ~> AffGame extra
+  ∀ extra err
+  . Run (EFFECT + AFF + AFFGAME extra err + ()) ~> AffGame extra err
 runBaseAffGame' = runBaseAffGameAt'
-  (SProxy ∷ _ "effect")
-  (SProxy ∷ _ "aff")
+  (Proxy ∷ _ "effect")
+  (Proxy ∷ _ "aff")
   _affGame
 
 -- | Runs base `AffGame`, `Aff` and `Effect` together as one effect at the
 -- | provided labels
 runBaseAffGameAt' ∷
-  ∀ effect aff affGame extra r1 r2 r3
+  ∀ effect aff affGame extra err r1 r2 r3
   . IsSymbol effect
   ⇒ IsSymbol aff
   ⇒ IsSymbol affGame
-  ⇒ Row.Cons effect   EFFECT         () r1
-  ⇒ Row.Cons aff      AFF            r1 r2
-  ⇒ Row.Cons affGame (AFFGAME extra) r2 r3
-  ⇒ SProxy effect
-  → SProxy aff
-  → SProxy affGame
-  → Run r3 ~> AffGame extra
+  ⇒ Row.Cons effect Effect () r1
+  ⇒ Row.Cons aff Aff r1 r2
+  ⇒ Row.Cons affGame (AffGame extra err) r2 r3
+  ⇒ Proxy effect
+  → Proxy aff
+  → Proxy affGame
+  → Run r3 ~> AffGame extra err
 runBaseAffGameAt' effect aff affGame = case_
   # on effect  Effect.liftEffect
   # on aff     Aff.liftAff
