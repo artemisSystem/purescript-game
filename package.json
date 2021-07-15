@@ -1,12 +1,12 @@
 {
   "private": true,
   "scripts": {
-    "build": "npx spago build",
-    "repl": "npx spago -x dev.dhall repl",
-    "serve-webExample": "npx parcel serve --open --dist-dir dev examples/Example/$npm_config_module/index.html",
-    "watch-examples": "npx spago -x dev.dhall build --watch",
-    "webExample": "npx spago -x dev.dhall build && npx concurrently -k -n 'parcel,spago' -c 'green,blue' npm:serve-webExample npm:watch-examples",
-    "nodeExample": "npx spago -x dev.dhall run --watch -m Example.$npm_config_module.Main",
+    "build": "spago build",
+    "repl": "spago -x dev.dhall repl",
+    "watchExamples": "spago -x dev.dhall build --watch",
+    "webExample": "spago -x dev.dhall build && concurrently -k -n 'parcel,spago' -c 'green,blue' npm:serve-webExample npm:watch-examples",
+    "serveWebExample": "parcel serve --open --dist-dir dev examples/Example/$npm_config_module/index.html",
+    "nodeExample": "spago -x dev.dhall run --watch -m Example.$npm_config_module.Main",
     "example:Game": "npm run nodeExample --module=Game",
     "example:AffGame": "npm run webExample --module=AffGame"
   },
